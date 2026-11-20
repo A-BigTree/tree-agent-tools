@@ -134,3 +134,11 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# macOS
+.DS_Store
+
+# Herdr mod generated files
+herdr-mods/**/gpui-kit.d.ts
+herdr-mods/**/jsconfig.json
+herdr-mods/**/*.error

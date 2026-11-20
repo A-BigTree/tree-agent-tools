@@ -1,0 +1,9 @@
+{
+  "name": "multi-repo-sidebar",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check": "herdr-app check ."
+  }
+}
