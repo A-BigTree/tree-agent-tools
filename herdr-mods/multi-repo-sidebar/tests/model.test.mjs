@@ -32,8 +32,36 @@ const panes = [
   { pane: "p5", terminal: "t5", branch: "main", cwd: "/w/other" },
 ];
 const repoInfo = {
-  "/w/workspace": { key: "root|/w/workspace", name: "workspace", branch: "main" },
-  "/w/repo-a": { key: "root|/w/repo-a", name: "repo-a", branch: "feature-a" },
+  "/w/workspace": {
+    key: "root|/w/workspace",
+    name: "workspace",
+    branch: "main",
+    upstream: "origin/main",
+    ahead: 1,
+    behind: 0,
+    staged: false,
+    unstaged: true,
+    stagedCount: 0,
+    unstagedCount: 3,
+    untrackedCount: 2,
+    conflictedCount: 0,
+    dirty: true,
+  },
+  "/w/repo-a": {
+    key: "root|/w/repo-a",
+    name: "repo-a",
+    branch: "feature-a",
+    upstream: "origin/feature-a",
+    ahead: 2,
+    behind: 1,
+    staged: true,
+    unstaged: true,
+    stagedCount: 2,
+    unstagedCount: 1,
+    untrackedCount: 1,
+    conflictedCount: 1,
+    dirty: true,
+  },
   "/w/repo-a/src": { key: "root|/w/repo-a", name: "repo-a", branch: "feature-a" },
   "/w/repo-a/tools": { key: "root|/w/repo-a", name: "repo-a", branch: "feature-a" },
   "/w/repo-a2": { key: "root|/w/repo-a2", name: "repo-a2", branch: "feature-a2" },
@@ -48,6 +76,12 @@ test("all live terminals, agents and plain shells, share one tree", () => {
   assert.equal(requirement.name, "需求 A");
   assert.equal(requirement.workspace.name, "workspace");
   assert.equal(requirement.workspace.branch, "main");
+  assert.equal(requirement.workspace.ahead, 1);
+  assert.equal(requirement.workspace.unstaged, true);
+  assert.equal(requirement.workspace.unstagedCount, 3);
+  assert.equal(requirement.workspace.untrackedCount, 2);
+  assert.equal(requirement.workspace.conflictedCount, 0);
+  assert.equal(requirement.workspace.dirty, true);
   assert.equal(requirement.terminalCount, 5);
   assert.equal(requirement.roots.length, 2);
   assert.equal(requirement.roots[0].node.address, "t1");
@@ -62,6 +96,14 @@ test("direct children cluster by resolved repo root; deeper agents keep parent",
   assert.equal(root.repos.length, 2);
   assert.equal(root.repos[0].name, "repo-a");
   assert.equal(root.repos[0].branch, "feature-a");
+  assert.equal(root.repos[0].ahead, 2);
+  assert.equal(root.repos[0].behind, 1);
+  assert.equal(root.repos[0].staged, true);
+  assert.equal(root.repos[0].unstaged, true);
+  assert.equal(root.repos[0].stagedCount, 2);
+  assert.equal(root.repos[0].unstagedCount, 1);
+  assert.equal(root.repos[0].untrackedCount, 1);
+  assert.equal(root.repos[0].conflictedCount, 1);
   assert.equal(root.repos[0].agents.length, 1);
   assert.equal(root.repos[0].agents[0].address, "t2");
   assert.equal(root.repos[0].agents[0].children[0].address, "t3");

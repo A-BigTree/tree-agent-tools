@@ -42,3 +42,71 @@ export function parseBranch(result) {
   const branch = String(result.stdout ?? "").trim();
   return branch || null;
 }
+
+export function parseGitStatus(result) {
+  if (!result || result.code !== 0) return null;
+  const HEAD = "# branch.head ";
+  const UPSTREAM = "# branch.upstream ";
+  const AB = "# branch.ab ";
+  let branch = null;
+  let upstream = null;
+  let ahead = 0;
+  let behind = 0;
+  let staged = false;
+  let unstaged = false;
+  let stagedCount = 0;
+  let unstagedCount = 0;
+  let untrackedCount = 0;
+  let conflictedCount = 0;
+
+  for (const line of String(result.stdout ?? "").split("\n")) {
+    if (!line) continue;
+    if (line.startsWith(HEAD)) {
+      branch = line.slice(HEAD.length).trim() || null;
+      continue;
+    }
+    if (line.startsWith(UPSTREAM)) {
+      upstream = line.slice(UPSTREAM.length).trim() || null;
+      continue;
+    }
+    if (line.startsWith(AB)) {
+      const match = /^\+\s*(\d+)\s+-\s*(\d+)/.exec(line.slice(AB.length));
+      if (match) {
+        ahead = Number(match[1]);
+        behind = Number(match[2]);
+      }
+      continue;
+    }
+    if (line.startsWith("u ")) {
+      conflictedCount += 1;
+      continue;
+    }
+    if (line.startsWith("1 ") || line.startsWith("2 ")) {
+      const xy = line.slice(2, 4);
+      if (xy[0] !== ".") {
+        staged = true;
+        stagedCount += 1;
+      }
+      if (xy[1] !== ".") {
+        unstaged = true;
+        unstagedCount += 1;
+      }
+      continue;
+    }
+    if (line.startsWith("? ")) untrackedCount += 1;
+  }
+
+  return {
+    branch: branch === "(detached)" ? "(detached)" : branch,
+    upstream,
+    ahead,
+    behind,
+    staged,
+    unstaged,
+    stagedCount,
+    unstagedCount,
+    untrackedCount,
+    conflictedCount,
+    dirty: staged || unstaged || untrackedCount > 0 || conflictedCount > 0,
+  };
+}

@@ -207,6 +207,16 @@ export function buildRequirements({
     const workspace = {
       name: workspaceInfo?.name || (folder && folder === homeFolder ? "~" : baseName(folder)) || space.name || "",
       branch: workspaceInfo?.branch || null,
+      upstream: workspaceInfo?.upstream || null,
+      ahead: workspaceInfo?.ahead ?? 0,
+      behind: workspaceInfo?.behind ?? 0,
+      staged: Boolean(workspaceInfo?.staged),
+      unstaged: Boolean(workspaceInfo?.unstaged),
+      stagedCount: workspaceInfo?.stagedCount ?? 0,
+      unstagedCount: workspaceInfo?.unstagedCount ?? 0,
+      untrackedCount: workspaceInfo?.untrackedCount ?? 0,
+      conflictedCount: workspaceInfo?.conflictedCount ?? 0,
+      dirty: Boolean(workspaceInfo?.dirty),
     };
 
     const rootGroups = roots.map((root) => {
@@ -221,6 +231,16 @@ export function buildRequirements({
             key,
             name: info?.name || baseName(child.cwd) || displayName(child),
             branch: info?.branch || child.branch || null,
+            upstream: info?.upstream || null,
+            ahead: info?.ahead ?? 0,
+            behind: info?.behind ?? 0,
+            staged: Boolean(info?.staged),
+            unstaged: Boolean(info?.unstaged),
+            stagedCount: info?.stagedCount ?? 0,
+            unstagedCount: info?.unstagedCount ?? 0,
+            untrackedCount: info?.untrackedCount ?? 0,
+            conflictedCount: info?.conflictedCount ?? 0,
+            dirty: Boolean(info?.dirty),
             cwd: child.cwd || null,
             agents: [],
             terminalCount: 0,

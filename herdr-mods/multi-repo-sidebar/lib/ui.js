@@ -118,3 +118,37 @@ export function IconButton({ id, icon, label, onClick, iconSize = 14 }) {
     })
     .child(Icon(icon, iconSize));
 }
+
+export function BranchStatus(t, info) {
+  if (!info) return null;
+  const item = (color, icon, count, tooltip) =>
+    h_flex()
+      .flex_none()
+      .gap(2)
+      .items_center()
+      .tooltip(tooltip)
+      .child(div().text_size(10.5).font_medium().text_color(color).child(icon))
+      .child(div().text_size(10.5).text_color(color).child(String(count)));
+  return h_flex()
+    .flex_none()
+    .gap(7)
+    .items_center()
+    .when((info.unstagedCount ?? 0) > 0, (el) =>
+      el.child(item(t.working, "!", info.unstagedCount, `${info.unstagedCount} uncommitted changes`)),
+    )
+    .when((info.stagedCount ?? 0) > 0, (el) =>
+      el.child(item(t.accent, "+", info.stagedCount, `${info.stagedCount} staged changes`)),
+    )
+    .when((info.untrackedCount ?? 0) > 0, (el) =>
+      el.child(item(t.muted, "?", info.untrackedCount, `${info.untrackedCount} untracked files`)),
+    )
+    .when((info.conflictedCount ?? 0) > 0, (el) =>
+      el.child(item(t.blocked, "✘", info.conflictedCount, `${info.conflictedCount} conflicts`)),
+    )
+    .when((info.ahead ?? 0) > 0, (el) =>
+      el.child(item(t.ansi2, "⇡", info.ahead, `${info.ahead} commits to push`)),
+    )
+    .when((info.behind ?? 0) > 0, (el) =>
+      el.child(item(t.ansi1, "⇣", info.behind, `${info.behind} commits to pull`)),
+    );
+}

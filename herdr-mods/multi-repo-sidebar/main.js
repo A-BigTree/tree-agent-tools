@@ -24,11 +24,11 @@ import {
   cacheKey,
   dueRequests,
   nextBatch,
-  parseBranch,
+  parseGitStatus,
   parseRepoRoot,
   uniqueRequests,
 } from "./lib/branches.js";
-import { Avatar, CountPill, Icon, IconButton, ProgramIcon, Rail, Status } from "./lib/ui.js";
+import { Avatar, BranchStatus, CountPill, Icon, IconButton, ProgramIcon, Rail, Status } from "./lib/ui.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -41,6 +41,19 @@ function find(node, id) {
 
 const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
 
+function readSet(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) ?? "[]");
+    return new Set(Array.isArray(value) ? value : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeSet(key, value) {
+  localStorage.setItem(key, JSON.stringify([...value]));
+}
+
 export default class RequirementsSidebar extends View {
   init(_props, cx) {
     this.scroll = ScrollHandle.new();
@@ -51,6 +64,7 @@ export default class RequirementsSidebar extends View {
     this.branchQueue = [];
     this.branchBusy = false;
     this.watchers = new Map();
+    this.collapsed = readSet("multi-repo.collapsed");
     if (!checking()) {
       cx.timer.after(500, (cx) => this.refreshBranches(cx));
       cx.timer.every(1500, (cx) => this.refreshBranches(cx));
@@ -73,7 +87,7 @@ export default class RequirementsSidebar extends View {
 
   focusAgent(node) {
     if (node.pane) run("pane.focus", { pane: node.pane });
-    else run("agent.focus", { terminal: node.address });
+    else run("terminal.peek", { terminal: node.address });
   }
 
   toggleSidebar() {
@@ -86,6 +100,33 @@ export default class RequirementsSidebar extends View {
     run("layout.resize", { id: "sidebar", px: window()?.platform === "macos" ? 76 : 44 });
   }
 
+  toggleCollapsed(id, cx) {
+    if (this.collapsed.has(id)) this.collapsed.delete(id);
+    else this.collapsed.add(id);
+    writeSet("multi-repo.collapsed", this.collapsed);
+    cx.notify();
+  }
+
+  branchLine(info, t, indent) {
+    if (!info?.branch && !info?.dirty && !info?.ahead && !info?.behind) return null;
+    return h_flex()
+      .pl(indent)
+      .pr(8)
+      .h(20)
+      .gap(5)
+      .items_center()
+      .child(
+        div()
+          .flex_1()
+          .min_w(0)
+          .truncate()
+          .text_size(10.5)
+          .text_color(t.dim)
+          .child(info.branch || "(no branch)"),
+      )
+      .child(BranchStatus(t, info));
+  }
+
   repoInfo(cwd, machine = null) {
     if (!cwd) return null;
     const entry = this.branches[cacheKey(machine, cwd)];
@@ -94,6 +135,16 @@ export default class RequirementsSidebar extends View {
       key: `${machine ?? ""}|${entry.repoRoot}`,
       name: baseName(entry.repoRoot),
       branch: entry.branch || null,
+      upstream: entry.upstream || null,
+      ahead: entry.ahead ?? 0,
+      behind: entry.behind ?? 0,
+      staged: Boolean(entry.staged),
+      unstaged: Boolean(entry.unstaged),
+      stagedCount: entry.stagedCount ?? 0,
+      unstagedCount: entry.unstagedCount ?? 0,
+      untrackedCount: entry.untrackedCount ?? 0,
+      conflictedCount: entry.conflictedCount ?? 0,
+      dirty: Boolean(entry.dirty),
     };
   }
 
@@ -101,26 +152,49 @@ export default class RequirementsSidebar extends View {
     const key = cacheKey(request.machine, request.cwd);
     const previous = this.branches[key];
     try {
-      const [root, head] = await Promise.all([
+      const [root, status] = await Promise.all([
         exec("git", ["rev-parse", "--path-format=absolute", "--show-toplevel"], {
           cwd: request.cwd,
           on: request.machine,
         }),
-        exec("git", ["symbolic-ref", "-q", "--short", "HEAD"], {
+        exec("git", ["status", "--porcelain=v2", "--branch", "--untracked-files=normal"], {
           cwd: request.cwd,
           on: request.machine,
         }),
       ]);
       const repoRoot = parseRepoRoot(root);
-      this.branches[key] = {
+      const parsed = parseGitStatus(status);
+      if (!parsed) {
+        this.branches[key] = { ...(previous ?? {}), checkedAt: Date.now(), error: true };
+        return false;
+      }
+      const next = {
         repoRoot,
-        branch: parseBranch(head) ?? (head.code === 0 ? "(detached)" : null),
+        branch: parsed.branch,
+        upstream: parsed.upstream,
+        ahead: parsed.ahead,
+        behind: parsed.behind,
+        staged: parsed.staged,
+        unstaged: parsed.unstaged,
+        stagedCount: parsed.stagedCount,
+        unstagedCount: parsed.unstagedCount,
+        untrackedCount: parsed.untrackedCount,
+        conflictedCount: parsed.conflictedCount,
+        dirty: parsed.dirty,
         checkedAt: Date.now(),
         error: false,
       };
+      const changed =
+        !previous ||
+        ["repoRoot", "branch", "upstream", "ahead", "behind", "staged", "unstaged", "stagedCount", "unstagedCount", "untrackedCount", "conflictedCount", "dirty"].some(
+          (field) => previous[field] !== next[field],
+        );
+      this.branches[key] = next;
       if (!request.machine && repoRoot) this.watchRepo(repoRoot, cx);
+      return changed;
     } catch {
       this.branches[key] = { ...(previous ?? {}), checkedAt: Date.now(), error: true };
+      return false;
     }
   }
 
@@ -140,7 +214,7 @@ export default class RequirementsSidebar extends View {
           await current;
           if (this.watchers.get(repoRoot) !== current) return;
           for (const [key, entry] of Object.entries(this.branches)) {
-            if (entry.repoRoot === repoRoot) delete this.branches[key];
+            if (entry.repoRoot === repoRoot) this.branches[key] = { ...entry, checkedAt: 0 };
           }
           this.refreshBranches(cx);
           current = watchFolder(repoRoot);
@@ -167,14 +241,16 @@ export default class RequirementsSidebar extends View {
     if (this.branchBusy) return;
     this.branchBusy = true;
     cx.spawn(async (cx) => {
+      let changed = false;
       try {
         while (this.branchQueue.length) {
           const batch = nextBatch(this.branchQueue, 6);
-          await Promise.all(batch.map((request) => this.readBranch(request, cx)));
+          const results = await Promise.all(batch.map((request) => this.readBranch(request, cx)));
+          if (results.some(Boolean)) changed = true;
         }
       } finally {
         this.branchBusy = false;
-        cx.notify();
+        if (changed) cx.notify();
       }
     });
   }
@@ -251,6 +327,8 @@ export default class RequirementsSidebar extends View {
   }
 
   requirement(requirement, t) {
+    const collapsed = this.collapsed.has(requirement.id);
+    const workspaceBranch = this.branchLine(requirement.workspace, t, 8);
     return v_flex()
       .id(`requirement-${requirement.id}`)
       .flex_none()
@@ -266,48 +344,52 @@ export default class RequirementsSidebar extends View {
           .cursor_pointer()
           .when(requirement.active, (el) => el.bg(t.selected))
           .when(!requirement.active, (el) => el.hover((style) => style.bg(t.hover)))
-          .on_click(() => this.selectSpace(requirement.space))
+          .on_click((_event, cx) => {
+            if (!requirement.active) {
+              this.selectSpace(requirement.space);
+              if (this.collapsed.has(requirement.id)) this.toggleCollapsed(requirement.id, cx);
+              return;
+            }
+            this.toggleCollapsed(requirement.id, cx);
+          })
           .on_mouse_down("right", () => this.openSpaceMenu(requirement.space))
-          .tooltip(`${requirement.terminalCount} terminals`)
+          .tooltip(
+            `${requirement.terminalCount} terminals · ${
+              requirement.active ? (collapsed ? "click again to expand" : "click again to collapse") : "click to select"
+            }`,
+          )
           .child(Avatar(requirement.space, 18))
           .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(requirement.name))
           .when(requirement.terminalCount > 0, (el) => el.child(CountPill(requirement.terminalCount))),
       )
-      .child(
-        h_flex()
-          .id(`workspace-${requirement.id}`)
-          .h(24)
-          .pl(26)
-          .pr(8)
-          .gap(5)
-          .items_center()
-          .cursor_pointer()
-          .hover((style) => style.bg(t.hover))
-          .on_click(() => this.selectSpace(requirement.space))
-          .tooltip(`${requirement.workspace.name}${requirement.workspace.branch ? ` · ${requirement.workspace.branch}` : ""}`)
-          .child(Icon("folder", 12).text_color(t.muted))
+      .when(!collapsed, (el) =>
+        el
           .child(
-            div()
-              .flex_1()
-              .min_w(0)
-              .truncate()
-              .text_size(11.5)
-              .text_color(t.muted)
-              .child(requirement.workspace.name),
+            h_flex()
+              .id(`workspace-${requirement.id}`)
+              .h(23)
+              .pl(8)
+              .pr(8)
+              .gap(5)
+              .items_center()
+              .cursor_pointer()
+              .hover((style) => style.bg(t.hover))
+              .on_click(() => this.selectSpace(requirement.space))
+              .tooltip(`${requirement.workspace.name}${requirement.workspace.branch ? ` · ${requirement.workspace.branch}` : ""}`)
+              .child(Icon("folder", 12).text_color(t.muted))
+              .child(
+                div()
+                  .flex_1()
+                  .min_w(0)
+                  .truncate()
+                  .text_size(11.5)
+                  .text_color(t.muted)
+                  .child(requirement.workspace.name),
+              ),
           )
-          .when(Boolean(requirement.workspace.branch), (el) =>
-            el.child(
-              div()
-                .flex_none()
-                .max_w(110)
-                .truncate()
-                .text_size(10.5)
-                .text_color(t.dim)
-                .child(requirement.workspace.branch),
-            ),
-          ),
-      )
-      .child(this.roots(requirement, t));
+          .when(Boolean(workspaceBranch), (branch) => branch.child(workspaceBranch))
+          .child(this.roots(requirement, t)),
+      );
   }
 
   roots(requirement, t) {
@@ -316,42 +398,34 @@ export default class RequirementsSidebar extends View {
     const rows = [];
     const tabCounts = new Map();
     for (const root of requirement.roots) tabCounts.set(root.node.tab, (tabCounts.get(root.node.tab) ?? 0) + 1);
-    requirement.roots.forEach((root, rootIndex) => {
-      const rootLast = rootIndex === requirement.roots.length - 1;
+    requirement.roots.forEach((root) => {
       const useTab = root.node.tabNamed && tabCounts.get(root.node.tab) === 1;
-      rows.push(this.terminalRow(root.node, [rootLast ? "└" : "├"], t, useTab));
-      const rootLead = [rootLast ? " " : "│"];
-      root.repos.forEach((repo, repoIndex) => {
-        const repoLast = repoIndex === root.repos.length - 1;
-        rows.push(this.repoRow(repo, [...rootLead, repoLast ? "└" : "├"], t));
-        this.agentTree(repo.agents, [...rootLead, repoLast ? " " : "│"], t, rows);
+      rows.push(this.terminalRow(root.node, t, useTab, 12));
+      root.repos.forEach((repo) => {
+        rows.push(this.repoRow(repo, t, 24));
+        this.agentTree(repo.agents, [], t, rows, 24);
       });
     });
-    return v_flex()
-      .pl(9)
-      .ml(9)
-      .pb(4)
-      .border_l(1)
-      .border_color(t.border)
-      .children(rows);
+    return v_flex().pb(4).children(rows);
   }
 
-  agentTree(nodes, lead, t, rows) {
+  agentTree(nodes, lead, t, rows, indent) {
     nodes.forEach((node, index) => {
       const last = index === nodes.length - 1;
-      rows.push(this.terminalRow(node, [...lead, last ? "└" : "├"], t));
-      this.agentTree(node.children, [...lead, last ? " " : "│"], t, rows);
+      rows.push(this.terminalRow(node, t, false, indent, [...lead, last ? "└" : "├"]));
+      this.agentTree(node.children, [...lead, last ? " " : "│"], t, rows, indent);
     });
   }
 
-  terminalRow(node, lines, t, useTab = false) {
+  terminalRow(node, t, useTab = false, indent = 0, lines = []) {
     const icon = ProgramIcon(node.program, 14);
     const active = node.address === this.focusedTerminal;
     const title = useTab && node.tabName ? node.tabName : displayName(node);
     return h_flex()
       .id(`terminal-${node.key}`)
       .h(26)
-      .px(6)
+      .pl(6 + indent)
+      .pr(6)
       .gap(6)
       .rounded(6)
       .items_center()
@@ -368,34 +442,32 @@ export default class RequirementsSidebar extends View {
       .when(Boolean(node.status), (el) => el.child(Status(t, node.status)));
   }
 
-  repoRow(repo, lines, t) {
+  repoRow(repo, t, indent) {
     const first = repo.agents[0];
-    return h_flex()
-      .id(`repo-${repo.key}`)
-      .h(27)
-      .px(6)
-      .gap(6)
-      .rounded(6)
-      .items_center()
-      .cursor_pointer()
-      .hover((style) => style.bg(t.hover))
-      .on_click(() => first && this.focusAgent(first))
-      .tooltip(`${repo.name}${repo.branch ? ` · ${repo.branch}` : ""}`)
-      .children(lines.map((line) => Rail(line)))
-      .child(Icon("branch", 12).text_color(t.muted))
-      .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(repo.name))
-      .when(repo.agents.length > 1, (el) => el.child(CountPill(repo.agents.length)))
-      .when(Boolean(repo.branch), (el) =>
-        el.child(
-          div()
-            .flex_none()
-            .max_w(100)
-            .truncate()
-            .text_size(10.5)
-            .text_color(t.dim)
-            .child(repo.branch),
-        ),
-      );
+    const branch = this.branchLine(repo, t, 6 + indent);
+    return v_flex()
+      .child(
+        h_flex()
+          .id(`repo-${repo.key}`)
+          .h(24)
+          .pl(6 + indent)
+          .pr(6)
+          .gap(6)
+          .rounded(6)
+          .items_center()
+          .cursor_pointer()
+          .hover((style) => style.bg(t.hover))
+          .on_click(() => first && this.focusAgent(first))
+          .tooltip(
+            `${repo.name}${repo.branch ? ` · ${repo.branch}` : ""}${repo.ahead ? ` · ⇡${repo.ahead}` : ""}${
+              repo.behind ? ` · ⇣${repo.behind}` : ""
+            }`,
+          )
+          .child(Icon("branch", 12).text_color(t.muted))
+          .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(repo.name))
+          .when(repo.agents.length > 1, (el) => el.child(CountPill(repo.agents.length))),
+      )
+      .when(Boolean(branch), (el) => el.child(branch));
   }
 
   rail(t, model) {

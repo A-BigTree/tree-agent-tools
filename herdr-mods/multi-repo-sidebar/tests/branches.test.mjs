@@ -6,6 +6,7 @@ import {
   isStale,
   nextBatch,
   parseBranch,
+  parseGitStatus,
   parseRepoRoot,
   uniqueRequests,
 } from "../lib/branches.js";
@@ -57,4 +58,52 @@ test("git output is parsed defensively", () => {
   assert.equal(parseRepoRoot(null), null);
   assert.equal(parseBranch({ code: 0, stdout: "feature/a\n" }), "feature/a");
   assert.equal(parseBranch({ code: 1, stdout: "" }), null);
+});
+
+test("porcelain v2 status gives branch, ahead/behind and changes", () => {
+  const result = {
+    code: 0,
+    stdout: [
+      "# branch.oid abc123",
+      "# branch.head feature/a",
+      "# branch.upstream origin/feature/a",
+      "# branch.ab +2 -1",
+      "1 .M N... 100644 100644 100644 abc def file.txt",
+      "2 R. N... 100644 100644 100644 abc def new.txt\told.txt",
+      "1 D. N... 100644 100644 100644 abc def deleted.txt",
+      "u UU N... 100644 100644 100644 100644 abc def conflict.txt",
+      "? untracked.txt",
+    ].join("\n"),
+  };
+  assert.deepEqual(parseGitStatus(result), {
+    branch: "feature/a",
+    upstream: "origin/feature/a",
+    ahead: 2,
+    behind: 1,
+    staged: true,
+    unstaged: true,
+    stagedCount: 2,
+    unstagedCount: 1,
+    untrackedCount: 1,
+    conflictedCount: 1,
+    dirty: true,
+  });
+});
+
+test("porcelain v2 status handles no upstream and detached head", () => {
+  assert.deepEqual(parseGitStatus({ code: 0, stdout: "# branch.head main\n" }), {
+    branch: "main",
+    upstream: null,
+    ahead: 0,
+    behind: 0,
+    staged: false,
+    unstaged: false,
+    stagedCount: 0,
+    unstagedCount: 0,
+    untrackedCount: 0,
+    conflictedCount: 0,
+    dirty: false,
+  });
+  assert.equal(parseGitStatus({ code: 0, stdout: "# branch.head (detached)\n" }).branch, "(detached)");
+  assert.equal(parseGitStatus({ code: 1, stdout: "" }), null);
 });

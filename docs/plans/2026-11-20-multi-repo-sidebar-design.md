@@ -14,8 +14,8 @@ Herdr 默认侧边栏把 spaces 和 agents 分成两块平铺列表，无法表�
 - 需求下展示工作区仓库信息，再展示代码仓库及其实体。
 - agent、普通终端与 sub-agent 使用同一种行样式。
 - 直接子终端按所在仓库目录聚类；深层 sub-agent 保持父子关系，不跨仓库重排。
-- 仓库分支通过后台 git 读取，缓存、监听并容错。
-- 不折叠、不显示聚合状态。
+- 仓库分支通过后台 git 读取，缓存、监听并容错；同时展示改动/待提交/待推送状态。
+- 不显示聚合状态；需求行支持点击折叠/展开。
 
 ## 非目标
 
@@ -30,8 +30,8 @@ Herdr 默认侧边栏把 spaces 和 agents 分成两块平铺列表，无法表�
 
 - 一个 `space` = 一个需求。
 - 需求第一行：space 头像、需求名、该 space 内 live 终端总数。
-- 需求第二行：工作区仓库名 + 分支。仓库名取 `space.folder` 或首个终端 `cwd` 的目录名；不绑定某个 agent，不显示状态。
-- 点击第一行切换 space；右键打开 Herdr 原生 space 菜单。
+- 需求第二行：工作区仓库名，与需求名齐平；分支单独一行展示。仓库名取首个顶层终端的实时 `cwd`（无终端时回退 `space.folder`）；分支后显示改动/待提交/待推送状态。
+- 点击第一行：非当前 space 时切换过去；已是当前 space 时折叠/展开。右键打开 Herdr 原生 space 菜单。
 
 ### 终端树
 
@@ -41,25 +41,29 @@ Herdr 默认侧边栏把 spaces 和 agents 分成两块平铺列表，无法表�
 - 顶层节点：`parent` 为空，或 parent 不在本 space 的终端。
 - 子节点：按 `parent` 构建父子关系，保持原始层级。
 - 一个 space 可以有多个顶层节点，不假设只有一个工作区 agent。
-- 终端行展示：程序图标、名称/标题、自身状态（普通终端无状态）、树线；hover 显示完整名称、cwd、报告；点击聚焦。
+- 终端行展示：程序图标、名称/标题、自身状态（普通终端无状态）；hover 显示完整名称、cwd、报告；点击聚焦。没有 pane 的 sub-agent 用 `terminal.peek` 打开 peek 窗口。
 
 ### 仓库聚类
 
 - 对每个顶层节点的**直接子终端**按仓库目录聚类。
 - 仓库目录优先使用后台 git 得到的 `git rev-parse --show-toplevel`；拿不到时回退到 `cwd`。
 - 同一仓库目录的多个直接子终端合并为一个仓库组。
-- 仓库组行：仓库名 + 分支；不显示聚合状态。
+- 仓库组行：仓库名，分支单独一行；不显示聚合状态。
+- 仓库组是 agent 上方的分组标签，不再作为 agent 的父容器；agent 与仓库组保持同级视觉层级，只有 sub-agent 继续缩进。
 - 仓库组下按 agent → sub-agent 原树展示；更深层 sub-agent 不重新聚类。
 - 顶层节点本身不参与仓库聚类；它只作为其直接子终端的父节点。
 
 ## 视觉与交互
 
 - 顶部：`需求` 标题、需求数量、新建 space 按钮。
-- 需求行两行；工作区仓库名和分支使用第二行，避免长工程名被右侧信息挤压。
-- 仓库组行使用分支图标、仓库名、分支；参考 better-sidebar / herca 的 icon 和缩进风格。
-- agent / sub-agent 行沿用 Herdr 默认 agents 列表风格：程序图标、名称/标题、状态、树线。
+- 需求行、工作区仓库行、仓库组行都靠左对齐；agent 只比工作区低一级，避免“工作区 → 仓库 → agent”三级缩进。
+- 分支名单独一行展示，避免长分支被同一行的仓库名/状态挤掉。
+- 仓库组行使用分支图标和仓库名；分支与状态在下一行；参考 better-sidebar / herca 的 icon 风格。
+- agent / sub-agent 行沿用 Herdr 默认 agents 列表风格：程序图标、命名 tab 名称/标题、状态；sub-agent 使用自身名称。顶层 agent 前不画树线；仓库 agent 是工作区 Agent 的子 Agent，和更深 sub-agent 一样用树线表达层级。
 - 状态仅在终端行显示：`blocked` 红色徽标、`working` spinner、`done` 实心点、`idle` 圆环。
-- 不显示聚合状态，不提供折叠箭头，不持久化折叠状态，始终完整展开。
+- 分支状态参考 powerlevel10k：`!N` 未暂存改动、`+N` 已暂存待提交、`?N` 未跟踪、`✘N` 冲突、`⇡N` 待推送、`⇣N` 落后远端。
+- 分支行与仓库/文件夹 icon 的左侧对齐。
+- 不显示聚合状态；需求行支持点击折叠/展开并持久化。
 - 侧边栏宽度小于 160px 时切换为 rail：需求头像、点击选择 space、底部 `»` 展开。
 - 颜色全部来自 `theme()`；图标使用 mod 自带 SVG。
 
@@ -68,8 +72,8 @@ Herdr 默认侧边栏把 spaces 和 agents 分成两块平铺列表，无法表�
 - 对工作区仓库、每个仓库组的 `cwd` 后台执行 git。
 - 每个仓库两次读取：
   - `git rev-parse --path-format=absolute --show-toplevel`
-  - `git symbolic-ref -q --short HEAD`
-- 缓存键：`[machine ?? null, cwd]`，值包含 `repoRoot`、`branch`、`checkedAt`。
+  - `git status --porcelain=v2 --branch --untracked-files=normal`
+- 缓存键：`[machine ?? null, cwd]`，值包含 `repoRoot`、`branch`、`upstream`、`ahead`、`behind`、`staged`、`unstaged`、`dirty`、`checkedAt`。
 - TTL 15 秒；最多同时 6 个 git 读取，其余排队；相同 cwd 去重。
 - 本地仓库首次读取后 `watchFolder(repoRoot)`；目录变化时标记过期并重读；远程机器靠定时回退。
 - 失败保留上一次成功结果，记录重试时间；不弹错、不阻塞渲染。
