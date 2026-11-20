@@ -314,9 +314,12 @@ export default class RequirementsSidebar extends View {
     if (!requirement.roots.length)
       return div().pl(26).pb(4).text_size(11).text_color(t.dim).child("No live terminals");
     const rows = [];
+    const tabCounts = new Map();
+    for (const root of requirement.roots) tabCounts.set(root.node.tab, (tabCounts.get(root.node.tab) ?? 0) + 1);
     requirement.roots.forEach((root, rootIndex) => {
       const rootLast = rootIndex === requirement.roots.length - 1;
-      rows.push(this.terminalRow(root.node, [rootLast ? "└" : "├"], t));
+      const useTab = root.node.tabNamed && tabCounts.get(root.node.tab) === 1;
+      rows.push(this.terminalRow(root.node, [rootLast ? "└" : "├"], t, useTab));
       const rootLead = [rootLast ? " " : "│"];
       root.repos.forEach((repo, repoIndex) => {
         const repoLast = repoIndex === root.repos.length - 1;
@@ -341,9 +344,10 @@ export default class RequirementsSidebar extends View {
     });
   }
 
-  terminalRow(node, lines, t) {
+  terminalRow(node, lines, t, useTab = false) {
     const icon = ProgramIcon(node.program, 14);
     const active = node.address === this.focusedTerminal;
+    const title = useTab && node.tabName ? node.tabName : displayName(node);
     return h_flex()
       .id(`terminal-${node.key}`)
       .h(26)
@@ -360,7 +364,7 @@ export default class RequirementsSidebar extends View {
       )
       .children(lines.map((line) => Rail(line)))
       .when(Boolean(icon), (el) => el.child(icon))
-      .child(div().flex_1().min_w(0).truncate().text_color(active ? t.foreground : t.muted).child(displayName(node)))
+      .child(div().flex_1().min_w(0).truncate().text_color(active ? t.foreground : t.muted).child(title))
       .when(Boolean(node.status), (el) => el.child(Status(t, node.status)));
   }
 

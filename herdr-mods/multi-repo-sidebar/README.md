@@ -9,7 +9,7 @@ Herdr 现有的 `spaces` / `agents` 是两个平铺列表；这个 mod 把同一
 | Herdr 实体 | 在侧边栏中的角色 |
 |---|---|
 | space | 一个需求 |
-| `space.folder` / 首个终端 cwd | 需求第二行的工作区仓库名与分支 |
+| 首个顶层终端的实时 cwd（无终端时回退 `space.folder`） | 需求第二行的工作区仓库名与分支 |
 | space 内的顶层终端（parent 为空） | 需求下的顶层节点；可以有多个 |
 | 顶层节点的直接子终端 | 按 `cwd` 所在的仓库聚类；同仓库合并 |
 | 更深的 sub-agent | 保持 agent → sub-agent 父子关系，不跨仓库重排 |

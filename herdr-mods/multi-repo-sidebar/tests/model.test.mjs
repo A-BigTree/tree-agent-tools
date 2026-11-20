@@ -6,7 +6,7 @@ const labels = (space, tab = "tab1") => ({ "herdr.space": space, "herdr.tab": ta
 const agent = { program: { agent: true, name: "Agent", icon: null, tint: false } };
 const terminal = (fields) => ({ state: "live", ...agent, ...fields });
 const spaces = [
-  { id: "s1", name: "需求 A", active: true, folder: "/w/workspace", branch: "main", tabs: [{ id: "tab1" }] },
+  { id: "s1", name: "需求 A", active: true, folder: "/w/workspace", branch: "main", tabs: [{ id: "tab1", name: "总控", named: true }] },
   { id: "s2", name: "需求 B", active: false, folder: "/w/other", tabs: [{ id: "tab2" }] },
 ];
 const agents = [
@@ -51,6 +51,8 @@ test("all live terminals, agents and plain shells, share one tree", () => {
   assert.equal(requirement.terminalCount, 5);
   assert.equal(requirement.roots.length, 2);
   assert.equal(requirement.roots[0].node.address, "t1");
+  assert.equal(requirement.roots[0].node.tabName, "总控");
+  assert.equal(requirement.roots[0].node.tabNamed, true);
   assert.equal(requirement.roots[1].node.address, "t6");
 });
 
@@ -126,6 +128,53 @@ test("where label assigns a space when the parent is gone", () => {
   assert.equal(requirement.terminalCount, 6);
   const orphan = requirement.roots.find((root) => root.node.address === "t11");
   assert.equal(orphan.node.space, "s1");
+});
+
+test("workspace line follows the first top-level terminal in a repo", () => {
+  const toolSpaces = [{ id: "s3", name: "AI工具", active: false, folder: "/Users/me", tabs: [] }];
+  const toolTerminals = [
+    terminal({
+      address: "u1",
+      parent: null,
+      cwd: "/Users/me",
+      created_ms: 1,
+      status: null,
+      labels: labels("s3"),
+      program: null,
+    }),
+    terminal({ address: "u2", parent: null, cwd: "/w/repo-c", created_ms: 2, status: "idle", labels: labels("s3") }),
+  ];
+  const toolRepo = (cwd) =>
+    cwd === "/w/repo-c" ? { key: "root|/w/repo-c", name: "repo-c", branch: "feat-c" } : null;
+  const model = buildRequirements({
+    spaces: toolSpaces,
+    agents: [],
+    terminals: toolTerminals,
+    panes: [],
+    resolveRepo: toolRepo,
+    homeFolder: "/Users/me",
+  });
+  assert.equal(model.requirements[0].workspace.name, "repo-c");
+  assert.equal(model.requirements[0].workspace.branch, "feat-c");
+  assert.equal(model.requirements[0].folder, "/w/repo-c");
+});
+
+test("workspace line follows the live top-level terminal even when space folder differs", () => {
+  const folderSpaces = [{ id: "s4", name: "配置需求", active: false, folder: "/w/repo-a", tabs: [] }];
+  const folderTerminals = [
+    terminal({ address: "v1", parent: null, cwd: "/w/repo-b", created_ms: 1, status: "idle", labels: labels("s4") }),
+  ];
+  const folderRepo = (cwd) => ({ key: `root|${cwd}`, name: cwd.replace("/w/", ""), branch: "main" });
+  const model = buildRequirements({
+    spaces: folderSpaces,
+    agents: [],
+    terminals: folderTerminals,
+    panes: [],
+    resolveRepo: folderRepo,
+    homeFolder: "/Users/me",
+  });
+  assert.equal(model.requirements[0].workspace.name, "repo-b");
+  assert.equal(model.requirements[0].folder, "/w/repo-b");
 });
 
 test("small helpers normalize", () => {

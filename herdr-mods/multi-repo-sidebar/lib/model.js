@@ -90,7 +90,7 @@ export function buildRequirements({
       machine: explicitSpace ? (spaceById.get(explicitSpace)?.machine ?? null) : null,
       name: terminal.name || null,
       title: terminal.title || null,
-      cwd: terminal.cwd || pane?.cwd || null,
+      cwd: pane?.cwd || terminal.cwd || null,
       parentAddress: terminal.parent ? String(terminal.parent) : null,
       parent: terminal.parent ? normalizeId(terminal.parent) : null,
       parentNode: null,
@@ -105,6 +105,8 @@ export function buildRequirements({
       children: [],
       whereSpace: whereParts.length > 1 ? whereParts[0] : null,
       whereTab: whereParts.length > 1 ? whereParts.slice(1).join(" / ") : null,
+      tabName: null,
+      tabNamed: false,
     };
     rawNodes.push(node);
     byAddress.set(node.address, node);
@@ -148,6 +150,14 @@ export function buildRequirements({
     }
   }
 
+  for (const node of rawNodes) {
+    if (!node.space) continue;
+    const space = spaceById.get(node.space);
+    const tab = (space?.tabs ?? []).find((candidate) => normalizeId(candidate.id) === node.tab);
+    node.tabName = tab?.name || null;
+    node.tabNamed = Boolean(tab?.named);
+  }
+
   const kept = new Set();
   const nodes = [];
   for (const node of rawNodes) {
@@ -188,7 +198,11 @@ export function buildRequirements({
       );
     });
 
-    const folder = space.folder || mine.find((node) => !node.parent)?.cwd || "";
+    const folder =
+      roots.map((root) => root.cwd).find((cwd) => cwd && cwd !== homeFolder) ||
+      roots[0]?.cwd ||
+      space.folder ||
+      "";
     const workspaceInfo = resolveRepo(folder, space);
     const workspace = {
       name: workspaceInfo?.name || (folder && folder === homeFolder ? "~" : baseName(folder)) || space.name || "",
