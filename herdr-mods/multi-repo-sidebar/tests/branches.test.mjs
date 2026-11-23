@@ -9,7 +9,7 @@ import {
   parseGitStatus,
   parseRepoRoot,
   uniqueRequests,
-} from "../lib/branches.js";
+} from "../mods/multi-repo-sidebar/lib/branches.js";
 
 test("cache keys separate machines and folders", () => {
   assert.notEqual(cacheKey(null, "/w/a"), cacheKey("vps", "/w/a"));

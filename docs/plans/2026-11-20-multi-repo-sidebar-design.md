@@ -60,6 +60,7 @@ Herdr 默认侧边栏把 spaces 和 agents 分成两块平铺列表，无法表�
 - 分支名单独一行展示，避免长分支被同一行的仓库名/状态挤掉。
 - 仓库组行使用分支图标和仓库名；分支与状态在下一行；参考 better-sidebar / herca 的 icon 风格。
 - agent / sub-agent 行沿用 Herdr 默认 agents 列表风格：程序图标、命名 tab 名称/标题、状态；sub-agent 使用自身名称。顶层 agent 前不画树线；仓库 agent 是工作区 Agent 的子 Agent，和更深 sub-agent 一样用树线表达层级。
+- 视觉主体是 agent：agent 用主文本色，仓库名/分支/工作区描述用弱化色。
 - 状态仅在终端行显示：`blocked` 红色徽标、`working` spinner、`done` 实心点、`idle` 圆环。
 - 分支状态参考 powerlevel10k：`!N` 未暂存改动、`+N` 已暂存待提交、`?N` 未跟踪、`✘N` 冲突、`⇡N` 待推送、`⇣N` 落后远端。
 - 分支行与仓库/文件夹 icon 的左侧对齐。
@@ -83,17 +84,21 @@ Herdr 默认侧边栏把 spaces 和 agents 分成两块平铺列表，无法表�
 
 ```text
 herdr-mods/multi-repo-sidebar/
-  mod.json
-  main.js                 # View、渲染、交互、分支刷新调度
-  lib/model.js            # 纯函数：终端树、需求、仓库聚类
-  lib/branches.js         # 纯函数：缓存、TTL、待刷新计划
-  lib/ui.js               # 设计 token、Avatar、Status、图标按钮
-  icons/*.svg
-  layouts/requirements.json
+  mods/multi-repo-sidebar/
+    mod.json
+    main.js               # View、渲染、交互、分支刷新调度
+    lib/model.js          # 纯函数：终端树、需求、仓库聚类
+    lib/branches.js       # 纯函数：缓存、TTL、待刷新计划
+    lib/ui.js             # 设计 token、Avatar、Status、图标按钮
+    icons/*.svg
+    THIRD_PARTY.md
+  RECIPE.md
+  preview.png
+  README.md
   tests/model.test.mjs
   tests/branches.test.mjs
-  README.md
   sync.sh
+herdr-mods/examples/multi-repo.json
 ```
 
 ## 错误处理
@@ -120,6 +125,6 @@ herdr-mods/multi-repo-sidebar/
 
 ## 布局集成
 
-- 提供独立示例 layout `layouts/requirements.json`，侧边栏只放一个 `multi-repo-sidebar` block。
+- 提供独立示例 layout `herdr-mods/examples/multi-repo.json`，侧边栏只放一个 `multi-repo-sidebar` block。
 - 也可把现有 layout 的 `spaces` + `agents` 两个 block 替换为单个 block。
 - 默认宽度 280px，min 44px，max 480px。

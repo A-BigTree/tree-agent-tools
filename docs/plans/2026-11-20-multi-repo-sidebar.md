@@ -15,7 +15,7 @@
 ## 约束
 
 - 现有 `herdr-mods/multi-repo-sidebar` 是草稿，本计划基于它重构。
-- 不删除用户现有 layout；示例 layout 只新增 `layouts/requirements.json`。
+- 不删除用户现有 layout；示例 layout 只新增 `herdr-mods/examples/multi-repo.json`。
 - 不提交 git，直到用户明确要求。
 - 每个行为先写失败测试，再实现，再跑测试。
 
@@ -738,7 +738,7 @@ Expected: `check passed: ...`。检查阶段不会执行 git。
 ### Task 5: 更新布局、README、sync
 
 **Files:**
-- Modify: `layouts/requirements.json`
+- Modify: `herdr-mods/examples/multi-repo.json`
 - Modify: `README.md`
 - Modify: `sync.sh`（如无需变更则不改）
 
@@ -761,7 +761,7 @@ Expected: `check passed: ...`。检查阶段不会执行 git。
 
 - 拷贝 mod 到 `~/.config/herdr-app/mods/multi-repo-sidebar`。
 - 不拷贝 `tests`、`package.json`、`layouts` 到 mod 目录。
-- `--with-layout` 时复制 `layouts/requirements.json`。
+- `--with-layout` 时复制 `herdr-mods/examples/multi-repo.json`。
 - 运行 `herdr-app check`。
 
 ---
@@ -796,7 +796,7 @@ Expected: `check passed: ...`。
 
 Run:
 ```bash
-herdr-app do layout.switch '{"name":"requirements"}'
+herdr-app do layout.switch '{"name":"multi-repo"}'
 sleep 2
 herdr-app shot /tmp/multi-repo-sidebar.png
 ```
@@ -821,7 +821,7 @@ Expected: `{"ok": true}`。
 
 Run:
 ```bash
-ls ~/.config/herdr-app/mods/multi-repo-sidebar.error ~/.config/herdr-app/layouts/requirements.error 2>/dev/null || true
+ls ~/.config/herdr-app/mods/multi-repo-sidebar.error ~/.config/herdr-app/layouts/multi-repo.error 2>/dev/null || true
 ```
 
 Expected: 无输出。

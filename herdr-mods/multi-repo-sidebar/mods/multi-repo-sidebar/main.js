@@ -157,7 +157,7 @@ export default class RequirementsSidebar extends View {
           cwd: request.cwd,
           on: request.machine,
         }),
-        exec("git", ["status", "--porcelain=v2", "--branch", "--untracked-files=normal"], {
+        exec("git", ["--no-optional-locks", "status", "--porcelain=v2", "--branch", "--untracked-files=normal"], {
           cwd: request.cwd,
           on: request.machine,
         }),
@@ -438,7 +438,7 @@ export default class RequirementsSidebar extends View {
       )
       .children(lines.map((line) => Rail(line)))
       .when(Boolean(icon), (el) => el.child(icon))
-      .child(div().flex_1().min_w(0).truncate().text_color(active ? t.foreground : t.muted).child(title))
+      .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(title))
       .when(Boolean(node.status), (el) => el.child(Status(t, node.status)));
   }
 
@@ -463,8 +463,8 @@ export default class RequirementsSidebar extends View {
               repo.behind ? ` · ⇣${repo.behind}` : ""
             }`,
           )
-          .child(Icon("branch", 12).text_color(t.muted))
-          .child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(repo.name))
+          .child(Icon("branch", 12).text_color(t.dim))
+          .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(repo.name))
           .when(repo.agents.length > 1, (el) => el.child(CountPill(repo.agents.length))),
       )
       .when(Boolean(branch), (el) => el.child(branch));

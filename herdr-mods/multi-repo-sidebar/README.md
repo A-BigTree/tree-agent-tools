@@ -16,6 +16,7 @@ Herdr 现有的 `spaces` / `agents` 是两个平铺列表；这个 mod 把同一
 
 - 工作区仓库行与需求名齐平；分支单独一行展示，不再被同一行宽度截断。
 - 顶层 agent 前不画树线；仓库 agent 是工作区 Agent 的子 Agent，和更深 sub-agent 一样用树线表达层级。
+- 视觉主体是 agent：agent 使用主文本色；仓库名、分支和工作区描述使用弱化色。
 - `hc ls` 里的 agent 和普通终端/命令行都进入同一棵树，使用同一种行样式；普通终端没有状态就不显示状态。
 - 仓库名优先取 `git rev-parse --show-toplevel` 的目录名；拿不到时回退到 cwd 目录名。
 - 只展示 `state: "live"` 的终端；已结束的终端不显示。
@@ -32,7 +33,7 @@ cd herdr-mods/multi-repo-sidebar
 安装后热加载。切换到示例 layout：
 
 ```bash
-herdr-app do layout.switch '{"name":"requirements"}'
+herdr-app do layout.switch '{"name":"multi-repo"}'
 ```
 
 回到原 layout：
@@ -43,10 +44,10 @@ herdr-app do layout.switch '{"name":"main"}'
 
 ## 接入现有 layout
 
-示例 layout 在 `layouts/requirements.json`。如果只想改自己的 layout：
+示例 layout 在 `herdr-mods/examples/multi-repo.json`。如果只想改自己的 layout：
 
-1. 克隆当前 layout：`herdr-app do layout.clone '{"name":"main","as":"my-requirements"}'`
-2. 编辑 `~/.config/herdr-app/layouts/my-requirements.json`
+1. 克隆当前 layout：`herdr-app do layout.clone '{"name":"main","as":"my-multi-repo"}'`
+2. 编辑 `~/.config/herdr-app/layouts/my-multi-repo.json`
 3. 把侧边栏里的 `spaces` 和 `agents` 两个 block 换成一个：
 
 ```json
@@ -59,7 +60,7 @@ herdr-app do layout.switch '{"name":"main"}'
 }
 ```
 
-4. `herdr-app do layout.switch '{"name":"my-requirements"}'`
+4. `herdr-app do layout.switch '{"name":"my-multi-repo"}'`
 
 ## 交互
 
@@ -93,7 +94,7 @@ node --test tests/*.test.mjs
 herdr-app check ~/.config/herdr-app/mods/multi-repo-sidebar
 ```
 
-修改 `main.js` 或 `lib/*.js` 后 Herdr 会热加载。若渲染出错，检查
+修改 `mods/multi-repo-sidebar/main.js` 或 `mods/multi-repo-sidebar/lib/*.js` 后 Herdr 会热加载。若渲染出错，检查
 `~/.config/herdr-app/mods/multi-repo-sidebar.error`（如存在）。
 
 设计文档：`docs/plans/2026-11-20-multi-repo-sidebar-design.md`。

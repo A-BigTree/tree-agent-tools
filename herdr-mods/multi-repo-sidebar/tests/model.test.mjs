@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { baseName, buildRequirements, displayName, normalizeId, topStatus } from "../lib/model.js";
+import { baseName, buildRequirements, displayName, normalizeId, topStatus } from "../mods/multi-repo-sidebar/lib/model.js";
 
 const labels = (space, tab = "tab1") => ({ "herdr.space": space, "herdr.tab": tab });
 const agent = { program: { agent: true, name: "Agent", icon: null, tint: false } };
