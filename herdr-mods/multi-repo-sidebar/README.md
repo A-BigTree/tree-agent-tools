@@ -67,6 +67,7 @@ herdr-app do layout.switch '{"name":"main"}'
 ## 交互
 
 - 点击需求行：如果它不是当前 space，切换到该 space；如果已经是当前 space，再点一次折叠/展开。
+- 上下拖动需求行：调整 space 顺序，与 Herdr 默认侧栏一致；只允许在同一台机器内排序。
 - 点击工作区仓库行：切换 space；tooltip 显示完整工作区仓库名和分支。
 - 点击顶层终端 / 仓库 / agent / sub-agent 行：聚焦对应终端；没有 pane 的 sub-agent 用 `terminal.peek` 打开 peek 窗口。
 - 点击需求第一行右侧的齿轮按钮：打开显示设置面板，可分别隐藏/显示仓库分支名和 git 状态。

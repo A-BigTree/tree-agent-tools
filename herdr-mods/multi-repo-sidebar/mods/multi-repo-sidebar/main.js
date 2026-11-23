@@ -73,6 +73,8 @@ export default class RequirementsSidebar extends View {
     this.branchBusy = false;
     this.watchers = new Map();
     this.collapsed = readSet("multi-repo.collapsed");
+    this.pressed = null;
+    this.over = null;
     this.panel = props()?.panel === "settings" ? "settings" : "sidebar";
     if (!checking() && this.panel === "sidebar") {
       cx.timer.after(500, (cx) => this.refreshBranches(cx));
@@ -105,6 +107,15 @@ export default class RequirementsSidebar extends View {
 
   selectSpace(space) {
     run("space.select", { id: space.id });
+  }
+
+  selectRequirement(requirement, cx) {
+    if (!requirement.active) {
+      this.selectSpace(requirement.space);
+      if (this.collapsed.has(requirement.id)) this.toggleCollapsed(requirement.id, cx);
+      return;
+    }
+    this.toggleCollapsed(requirement.id, cx);
   }
 
   openSpaceMenu(space) {
@@ -441,6 +452,10 @@ export default class RequirementsSidebar extends View {
     const collapsed = this.collapsed.has(requirement.id);
     const prefs = this.prefs ?? normalizePreferences();
     const workspaceBranch = this.branchLine(requirement.workspace, t, 8, prefs);
+    const index = (this.model?.requirements ?? []).findIndex((candidate) => candidate.id === requirement.id);
+    const fromIndex = this.pressed === null
+      ? -1
+      : (this.model?.requirements ?? []).findIndex((candidate) => candidate.id === this.pressed);
     return v_flex()
       .id(`requirement-${requirement.id}`)
       .flex_none()
@@ -448,6 +463,7 @@ export default class RequirementsSidebar extends View {
       .child(
         h_flex()
           .id(`requirement-row-${requirement.id}`)
+          .relative()
           .h(28)
           .px(8)
           .gap(7)
@@ -456,17 +472,48 @@ export default class RequirementsSidebar extends View {
           .cursor_pointer()
           .when(requirement.active, (el) => el.bg(t.selected))
           .when(!requirement.active, (el) => el.hover((style) => style.bg(t.hover)))
-          .on_click((_event, cx) => {
-            if (!requirement.active) {
-              this.selectSpace(requirement.space);
-              if (this.collapsed.has(requirement.id)) this.toggleCollapsed(requirement.id, cx);
-              return;
+          .when(this.pressed === requirement.id && this.over !== requirement.id, (el) => el.opacity(0.5))
+          .when(this.pressed !== null && this.over === requirement.id && this.pressed !== requirement.id, (el) =>
+            el.child(
+              div()
+                .absolute()
+                .left(0)
+                .right(0)
+                .h(2)
+                .bg(t.accent)
+                .when(fromIndex < index, (line) => line.bottom(0))
+                .when(fromIndex > index, (line) => line.top(0)),
+            ),
+          )
+          .on_mouse_down("left", () => {
+            this.pressed = requirement.id;
+            this.over = requirement.id;
+          })
+          .on_mouse_move((_event, cx) => {
+            const source = spaces().find((space) => space.id === this.pressed);
+            const over =
+              source && (source.machine ?? null) === (requirement.space.machine ?? null) ? requirement.id : null;
+            if (this.pressed !== null && this.over !== over) {
+              this.over = over;
+              cx.notify();
             }
-            this.toggleCollapsed(requirement.id, cx);
+          })
+          .on_mouse_up("left", (_event, cx) => {
+            const from = this.pressed;
+            const over = this.over;
+            this.pressed = null;
+            this.over = null;
+            if (from !== null && over === requirement.id && from !== requirement.id) {
+              const target = spaces().findIndex((space) => space.id === requirement.id);
+              if (target !== -1) run("space.move", { id: from, index: target + 1 });
+            } else if (from === requirement.id) {
+              this.selectRequirement(requirement, cx);
+            }
+            cx.notify();
           })
           .on_mouse_down("right", () => this.openSpaceMenu(requirement.space))
           .tooltip(
-            `${requirement.terminalCount} terminals · ${
+            `${requirement.terminalCount} terminals · drag to reorder · ${
               requirement.active ? (collapsed ? "click again to expand" : "click again to collapse") : "click to select"
             }`,
           )
