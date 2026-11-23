@@ -1,5 +1,5 @@
 import { div, image, svg } from "gpui-kit";
-import { h_flex } from "gpui-base";
+import { h_flex, v_flex } from "gpui-base";
 import { shared, theme } from "herdr";
 
 const MARKS = {
@@ -117,6 +117,42 @@ export function IconButton({ id, icon, label, onClick, iconSize = 14 }) {
       onClick(cx);
     })
     .child(Icon(icon, iconSize));
+}
+
+export function ToggleRow({ id, label, description, value, onClick }) {
+  const t = theme();
+  return h_flex()
+    .id(id)
+    .h(36)
+    .px(6)
+    .gap(8)
+    .rounded(6)
+    .items_center()
+    .cursor_pointer()
+    .hover((style) => style.bg(t.hover))
+    .on_click((_event, cx) => onClick(cx))
+    .child(
+      v_flex()
+        .flex_1()
+        .min_w(0)
+        .gap(1)
+        .child(div().text_size(12).text_color(t.foreground).child(label))
+        .when(Boolean(description), (el) => el.child(div().text_size(10).text_color(t.dim).child(description))),
+    )
+    .child(
+      div()
+        .size(15)
+        .flex_none()
+        .rounded(4)
+        .border(1)
+        .flex()
+        .items_center()
+        .justify_center()
+        .text_size(10)
+        .font_bold()
+        .when(value, (el) => el.bg(t.accent).border_color(t.accent).text_color(t.chrome).child("✓"))
+        .when(!value, (el) => el.bg(t.raised).border_color(t.border)),
+    );
 }
 
 export function BranchStatus(t, info) {

@@ -14,7 +14,8 @@ Herdr 现有的 `spaces` / `agents` 是两个平铺列表；这个 mod 把同一
 | 顶层节点的直接子终端 | 按 `cwd` 所在的仓库聚类；同仓库合并 |
 | 更深的 sub-agent | 保持 agent → sub-agent 父子关系，不跨仓库重排 |
 
-- 工作区仓库行与需求名齐平；分支单独一行展示，不再被同一行宽度截断。
+- 工作区仓库行与需求名齐平；git 状态紧跟仓库名右侧，分支单独一行展示，不再被同一行宽度截断。
+- 仓库行同样是仓库名在左、git 状态在右；分支在下一行。
 - 顶层 agent 前不画树线；仓库 agent 是工作区 Agent 的子 Agent，和更深 sub-agent 一样用树线表达层级。
 - 视觉主体是 agent：agent 使用主文本色；仓库名、分支和工作区描述使用弱化色。
 - `hc ls` 里的 agent 和普通终端/命令行都进入同一棵树，使用同一种行样式；普通终端没有状态就不显示状态。
@@ -26,15 +27,16 @@ Herdr 现有的 `spaces` / `agents` 是两个平铺列表；这个 mod 把同一
 
 ```bash
 cd herdr-mods/multi-repo-sidebar
-./sync.sh                 # 只安装 mod
-./sync.sh --with-layout   # 同时安装示例 layout
+./sync.sh        # 安装 mod，并把 Multi-Repo-Sidebar layout 放进 Herdr 设置
+./sync.sh --use  # 安装后直接切换到该 layout
 ```
 
-安装后热加载。切换到示例 layout：
+Herdr 设置里列出的是 `layouts/`，不是 `mods/`。只复制 mod 文件夹时，设置里不会有入口；`sync.sh` 会同时安装 `layouts/Multi-Repo-Sidebar.json`，设置里卡片的名称是 `Multi-Repo-Sidebar`，缩略图用 Herdr 默认样式。
 
-```bash
-herdr-app do layout.switch '{"name":"multi-repo"}'
-```
+安装完成后任选一种方式切换：
+
+- Herdr `Settings → Look → Layout → Multi-Repo-Sidebar`
+- `herdr-app do layout.switch '{"name":"Multi-Repo-Sidebar"}'`
 
 回到原 layout：
 
@@ -44,7 +46,7 @@ herdr-app do layout.switch '{"name":"main"}'
 
 ## 接入现有 layout
 
-示例 layout 在 `herdr-mods/examples/multi-repo.json`。如果只想改自己的 layout：
+分享的 layout 在 `herdr-mods/multi-repo-sidebar/layouts/Multi-Repo-Sidebar.json`。如果只想改自己的 layout：
 
 1. 克隆当前 layout：`herdr-app do layout.clone '{"name":"main","as":"my-multi-repo"}'`
 2. 编辑 `~/.config/herdr-app/layouts/my-multi-repo.json`
@@ -67,19 +69,22 @@ herdr-app do layout.switch '{"name":"main"}'
 - 点击需求行：如果它不是当前 space，切换到该 space；如果已经是当前 space，再点一次折叠/展开。
 - 点击工作区仓库行：切换 space；tooltip 显示完整工作区仓库名和分支。
 - 点击顶层终端 / 仓库 / agent / sub-agent 行：聚焦对应终端；没有 pane 的 sub-agent 用 `terminal.peek` 打开 peek 窗口。
-- 需求第一行右键：打开 Herdr 原生 space 菜单。
+- 点击需求第一行右侧的齿轮按钮：打开显示设置面板，可分别隐藏/显示仓库分支名和 git 状态。
+- 设置面板里的「在 Herdr 设置中切换布局」：关闭面板并打开 `Settings → Look`，在那里选择 `Multi-Repo-Sidebar` layout。
+- 点击需求第一行右键：打开 Herdr 原生 space 菜单。
 - 侧边栏窄于 160px 时变成 rail：显示需求头像，点击选择 space，底部 `»` 展开。
 
 ## 分支和状态
 
 - 后台对工作区仓库和每个仓库组的 cwd 执行 `git`，读取仓库根、当前分支、ahead/behind 和工作区状态。
-- 分支单独一行展示，并与仓库/文件夹 icon 左侧对齐；状态参考 powerlevel10k：
+- git 状态展示在仓库名称右侧；分支单独一行展示，并与仓库/文件夹 icon 左侧对齐。状态参考 powerlevel10k：
   - `!N`：N 个未暂存改动。
   - `+N`：N 个已暂存、待提交改动。
   - `?N`：N 个未跟踪文件。
   - `✘N`：N 个冲突。
   - `⇡N`：N 个提交待推送。
   - `⇣N`：落后远端 N 个提交。
+- 显示设置保存在 `shared()` 的 `multi-repo.preferences`，默认两项都显示；设置面板里点一下立即生效，对已经打开的侧边栏同样生效。
 - 缓存按 `[machine, cwd]` 保存，15 秒 TTL；最多 6 个读取并发，其余排队。
 - 本地仓库读取成功后监听目录变化；远程机器靠定时回退。
 - git 失败时保留上一次成功结果，稍后重试；不阻塞渲染。
