@@ -12,19 +12,19 @@ Agent 工具集合，目前包含 Herdr Desktop 的侧边栏 mod。
 
 - 源码和分享包：`herdr-mods/multi-repo-sidebar/`
 - 构建说明：`herdr-mods/multi-repo-sidebar/RECIPE.md`
-- 分享 layout：`herdr-mods/multi-repo-sidebar/layouts/multi-repo.json`
+- 分享 layout：`herdr-mods/multi-repo-sidebar/layouts/Multi-Repo-Sidebar.json`
 - 安装：
 
 ```bash
 cd herdr-mods/multi-repo-sidebar
-./sync.sh        # 安装 mod，并把 multi-repo layout 放进 Herdr 设置
+./sync.sh        # 安装 mod，并把 Multi-Repo-Sidebar layout 放进 Herdr 设置
 ./sync.sh --use  # 安装后直接切换
 ```
 
-Herdr 设置只列 `layouts/`，不列 `mods/`。`sync.sh` 会同时安装 layout，因此安装完成后可以在 `Settings → Look → Layout` 看到名为 `multi-repo` 的卡片（缩略图使用 Herdr 默认样式）；也可以直接执行：
+Herdr 设置只列 `layouts/`，不列 `mods/`。`sync.sh` 会同时安装 layout，因此安装完成后可以在 `Settings → Look → Layout` 看到名为 `Multi-Repo-Sidebar` 的卡片（缩略图使用 Herdr 默认样式）；也可以直接执行：
 
 ```bash
-herdr-app do layout.switch '{"name":"multi-repo"}'
+herdr-app do layout.switch '{"name":"Multi-Repo-Sidebar"}'
 ```
 
 如果要接入自己的 layout，把侧边栏里的 `spaces` 和 `agents` 换成一个 block：

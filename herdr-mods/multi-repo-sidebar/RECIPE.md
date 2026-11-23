@@ -1,6 +1,6 @@
 # Multi-Repo Sidebar
 
-A Herdr sidebar mod for requirements that fan out across several repositories. Each space becomes a requirement, the workspace repository and its agents sit underneath it, and the repositories that the workspace agent spawned its sub-agents into are shown as dim labels above those agents. Powerlevel10k-style git state sits after each repository name; branch names stay on their own line, so long project names no longer hide them. A gear button opens a small display-settings panel. The share also installs a layout card named `multi-repo` under `Settings → Look → Layout`, which is the manual switch entry; it keeps Herdr's default thumbnail, and a mod-only install has no entry at all.
+A Herdr sidebar mod for requirements that fan out across several repositories. Each space becomes a requirement, the workspace repository and its agents sit underneath it, and the repositories that the workspace agent spawned its sub-agents into are shown as dim labels above those agents. Powerlevel10k-style git state sits after each repository name; branch names stay on their own line, so long project names no longer hide them. A gear button opens a small display-settings panel. The share also installs a layout card named `Multi-Repo-Sidebar` under `Settings → Look → Layout`, which is the manual switch entry; it keeps Herdr's default thumbnail, and a mod-only install has no entry at all.
 
 ![Multi-Repo Sidebar](preview.png)
 
@@ -57,7 +57,7 @@ Branch data loads after 500ms, then a 1500ms tick checks the 15s TTL. Up to six 
 ## Built from
 
 ```text
-layouts/multi-repo.json
+layouts/Multi-Repo-Sidebar.json
 mods/multi-repo-sidebar/
   mod.json
   main.js
@@ -87,7 +87,7 @@ Add the mod to any layout:
 }
 ```
 
-The share also ships `layouts/multi-repo.json`. Herdr Settings lists layouts, not mods: without that file there is no Settings entry. The card's label is the layout filename (`multi-repo`), and it deliberately has no `"preview"`, so Herdr draws its default thumbnail instead of a screenshot. The install script must copy the layout file and the mod folder; switching is `Settings → Look → Layout → multi-repo` or `run("layout.switch", { name: "multi-repo" })`.
+The share also ships `layouts/Multi-Repo-Sidebar.json`. Herdr Settings lists layouts, not mods: without that file there is no Settings entry. The card's label is the layout filename (`Multi-Repo-Sidebar`), and it deliberately has no `"preview"`, so Herdr draws its default thumbnail instead of a screenshot. The install script must copy the layout file and the mod folder; switching is `Settings → Look → Layout → Multi-Repo-Sidebar` or `run("layout.switch", { name: "Multi-Repo-Sidebar" })`.
 
 Data path:
 
@@ -137,7 +137,7 @@ Icons are seven Lucide SVG files, ISC licensed; `THIRD_PARTY.md` carries the not
 ## Done when
 
 1. `herdr-app check mods/multi-repo-sidebar` prints `check passed`.
-2. Installing the share puts a card named `multi-repo` with Herdr's default thumbnail under `Settings → Look → Layout`; switching to it shows requirement rows, a workspace repository line, a branch line, and top-level agents.
+2. Installing the share puts a card named `Multi-Repo-Sidebar` with Herdr's default thumbnail under `Settings → Look → Layout`; switching to it shows requirement rows, a workspace repository line, a branch line, and top-level agents.
 3. A repository with more than one live child agent shows one dim repository label and one agent row per child; a child sub-agent under an agent has a tree rail and opens a peek window when clicked.
 4. Each repository name shows git state right after it; the branch line below shows only the branch and never repeats the status. Toggling `Git 状态` off hides every status but keeps branch lines; toggling `仓库分支名` off hides every branch line but keeps status.
 5. Clicking the active requirement row collapses and expands the workspace; clicking an inactive one selects it. Narrowing the sidebar below 160px shows the rail. The settings panel's `在 Herdr 设置中切换布局` row closes it and opens `Settings → Look`.

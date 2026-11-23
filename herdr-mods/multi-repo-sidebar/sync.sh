@@ -4,7 +4,7 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 app_home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 mod_name="multi-repo-sidebar"
-layout_name="multi-repo"
+layout_name="Multi-Repo-Sidebar"
 source="$here/mods/$mod_name"
 target="$app_home/mods/$mod_name"
 

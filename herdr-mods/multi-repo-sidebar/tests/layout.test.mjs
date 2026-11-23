@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const layout = JSON.parse(readFileSync(resolve(root, "layouts/multi-repo.json"), "utf8"));
+const layout = JSON.parse(readFileSync(resolve(root, "layouts/Multi-Repo-Sidebar.json"), "utf8"));
 
 function modsIn(node, found = []) {
   if (node?.content?.mod) found.push(node.content.mod);
