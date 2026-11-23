@@ -3,12 +3,14 @@ import { v_flex, h_flex, ScrollHandle } from "gpui-base";
 import {
   agents,
   checking,
+  closeOverlay,
   exec,
   focused,
   home,
   layout,
   openOverlay,
   panes,
+  props,
   run,
   setAgentOrder,
   setShared,
@@ -28,7 +30,13 @@ import {
   parseRepoRoot,
   uniqueRequests,
 } from "./lib/branches.js";
-import { Avatar, BranchStatus, CountPill, Icon, IconButton, ProgramIcon, Rail, Status } from "./lib/ui.js";
+import {
+  PREFERENCES_KEY,
+  PREFERENCE_TOGGLES,
+  normalizePreferences,
+  togglePreference as flipPreference,
+} from "./lib/preferences.js";
+import { Avatar, BranchStatus, CountPill, Icon, IconButton, ProgramIcon, Rail, Status, ToggleRow } from "./lib/ui.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -65,10 +73,34 @@ export default class RequirementsSidebar extends View {
     this.branchBusy = false;
     this.watchers = new Map();
     this.collapsed = readSet("multi-repo.collapsed");
-    if (!checking()) {
+    this.panel = props()?.panel === "settings" ? "settings" : "sidebar";
+    if (!checking() && this.panel === "sidebar") {
       cx.timer.after(500, (cx) => this.refreshBranches(cx));
       cx.timer.every(1500, (cx) => this.refreshBranches(cx));
     }
+  }
+
+  preferences() {
+    return normalizePreferences(shared(PREFERENCES_KEY));
+  }
+
+  togglePreference(key) {
+    setShared(PREFERENCES_KEY, flipPreference(shared(PREFERENCES_KEY), key));
+  }
+
+  openSettings() {
+    openOverlay({
+      mod: "multi-repo-sidebar",
+      kind: "popup",
+      width: 248,
+      height: 150,
+      props: { panel: "settings" },
+    });
+  }
+
+  closeSettings() {
+    const id = props()?.overlay;
+    if (id) closeOverlay(id);
   }
 
   selectSpace(space) {
@@ -107,7 +139,8 @@ export default class RequirementsSidebar extends View {
     cx.notify();
   }
 
-  branchLine(info, t, indent) {
+  branchLine(info, t, indent, prefs) {
+    if (!prefs.showBranch) return null;
     if (!info?.branch && !info?.dirty && !info?.ahead && !info?.behind) return null;
     return h_flex()
       .pl(indent)
@@ -123,8 +156,7 @@ export default class RequirementsSidebar extends View {
           .text_size(10.5)
           .text_color(t.dim)
           .child(info.branch || "(no branch)"),
-      )
-      .child(BranchStatus(t, info));
+      );
   }
 
   repoInfo(cwd, machine = null) {
@@ -257,6 +289,8 @@ export default class RequirementsSidebar extends View {
 
   render(_cx) {
     const t = theme();
+    if (this.panel === "settings") return this.settings(t);
+    this.prefs = this.preferences();
     const model = buildRequirements({
       spaces: spaces(),
       agents: agents(),
@@ -271,6 +305,52 @@ export default class RequirementsSidebar extends View {
     setAgentOrder(model.order);
     if (narrow()) return this.rail(t, model);
     return this.full(t, model);
+  }
+
+  settings(t) {
+    const prefs = this.preferences();
+    return v_flex()
+      .id("multi-repo-settings")
+      .size_full()
+      .p(6)
+      .gap(2)
+      .text_color(t.foreground)
+      .child(
+        h_flex()
+          .h(28)
+          .px(4)
+          .items_center()
+          .justify_between()
+          .child(div().text_size(12).font_medium().child("侧边栏显示"))
+          .child(
+            div()
+              .id("multi-repo-settings-close")
+              .size(20)
+              .flex_none()
+              .flex()
+              .items_center()
+              .justify_center()
+              .rounded(4)
+              .text_size(13)
+              .text_color(t.dim)
+              .cursor_pointer()
+              .hover((style) => style.bg(t.hover).text_color(t.foreground))
+              .on_click(() => this.closeSettings())
+              .child("×"),
+          ),
+      )
+      .children(
+        PREFERENCE_TOGGLES.map(({ key, label, description }) =>
+          ToggleRow({
+            id: `multi-repo-pref-${key}`,
+            label,
+            description,
+            value: prefs[key],
+            onClick: () => this.togglePreference(key),
+          }),
+        ),
+      )
+      .child(div().px(4).pt(2).text_size(10).text_color(t.dim).child("设置保存在 shared.json"));
   }
 
   full(t, model) {
@@ -304,12 +384,25 @@ export default class RequirementsSidebar extends View {
               .child(CountPill(model.requirements.length)),
           )
           .child(
-            IconButton({
-              id: "requirements-new-space",
-              icon: "plus",
-              label: "New requirement space",
-              onClick: () => run("space.new"),
-            }),
+            h_flex()
+              .gap(2)
+              .items_center()
+              .child(
+                IconButton({
+                  id: "requirements-settings",
+                  icon: "settings",
+                  label: "Sidebar settings",
+                  onClick: () => this.openSettings(),
+                }),
+              )
+              .child(
+                IconButton({
+                  id: "requirements-new-space",
+                  icon: "plus",
+                  label: "New requirement space",
+                  onClick: () => run("space.new"),
+                }),
+              ),
           ),
       )
       .child(
@@ -328,7 +421,8 @@ export default class RequirementsSidebar extends View {
 
   requirement(requirement, t) {
     const collapsed = this.collapsed.has(requirement.id);
-    const workspaceBranch = this.branchLine(requirement.workspace, t, 8);
+    const prefs = this.prefs ?? normalizePreferences();
+    const workspaceBranch = this.branchLine(requirement.workspace, t, 8, prefs);
     return v_flex()
       .id(`requirement-${requirement.id}`)
       .flex_none()
@@ -385,7 +479,8 @@ export default class RequirementsSidebar extends View {
                   .text_size(11.5)
                   .text_color(t.muted)
                   .child(requirement.workspace.name),
-              ),
+              )
+              .when(prefs.showStatus, (el) => el.child(BranchStatus(t, requirement.workspace))),
           )
           .when(Boolean(workspaceBranch), (branch) => branch.child(workspaceBranch))
           .child(this.roots(requirement, t)),
@@ -444,7 +539,8 @@ export default class RequirementsSidebar extends View {
 
   repoRow(repo, t, indent) {
     const first = repo.agents[0];
-    const branch = this.branchLine(repo, t, 6 + indent);
+    const prefs = this.prefs ?? normalizePreferences();
+    const branch = this.branchLine(repo, t, 6 + indent, prefs);
     return v_flex()
       .child(
         h_flex()
@@ -465,6 +561,7 @@ export default class RequirementsSidebar extends View {
           )
           .child(Icon("branch", 12).text_color(t.dim))
           .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(repo.name))
+          .when(prefs.showStatus, (el) => el.child(BranchStatus(t, repo)))
           .when(repo.agents.length > 1, (el) => el.child(CountPill(repo.agents.length))),
       )
       .when(Boolean(branch), (el) => el.child(branch));
