@@ -1,6 +1,6 @@
 # tree-agent-tools
 
-用于树状 Agent 工作流的工具集合，目前包含 Herdr Desktop 的侧边栏 mod。
+Agent 工具集合，目前包含 Herdr Desktop 的侧边栏 mod。
 
 ## Herdr mods
 
