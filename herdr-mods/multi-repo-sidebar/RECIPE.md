@@ -9,7 +9,7 @@ A Herdr sidebar mod for requirements that fan out across several repositories. E
 The mod fills one sidebar block. The recommended width is 280px; the block needs `min: 90`, and below 160px it switches to a compact rail.
 
 - **Header**, 40px tall: a 11.5px `dim` label `需求`, a 16px-tall count pill, and 26px gear and `+` buttons.
-- **Requirement row**, 28px tall: an 18px colored avatar, the requirement name in `foreground`, a live-terminal count pill, and — when the row is the active space — the `selected` background. The avatar color is the stored `space.colors` value or a deterministic color from the name.
+- **Requirement row**, 28px tall: an 18px colored avatar, the requirement name in `foreground`, a live-terminal count pill, and — when the row is the active space — the `selected` background. The avatar color is the stored `space.colors` value or a deterministic color from the name. Drag it up or down to reorder spaces; the drop edge shows a 2px `accent` line.
 - **Workspace repository line**, 23px tall, flush left with the requirement name: a 12px folder icon in `muted`, the workspace repository name in `muted`, then git state on the right.
 - **Workspace branch line**, 20px tall, left-aligned with the folder icon: 10.5px branch name in `dim`. Long branches get their own line instead of being truncated behind the repository name.
 - **Top-level agent**, 26px tall, indented 12px, with no tree glyph. When the tab has one top-level agent and is named, the row uses the tab name; otherwise it uses the terminal title. It shows the program icon and agent status on the right.
@@ -42,6 +42,7 @@ Git state, after the repository name:
 
 Clicks and keys:
 
+- Requirement row drag: mouse down stores the space id, mouse move marks the row under the pointer when it is on the same machine, mouse up runs `run("space.move", { id: from, index: target + 1 })`; a 2px `accent` line marks the drop edge and the dragged row dims to 0.5 opacity.
 - Requirement row, inactive: `run("space.select", { id })`.
 - Requirement row, active: toggles collapse. Collapsed IDs persist in `localStorage` under `multi-repo.collapsed`.
 - Header gear button: `openOverlay` with this same mod, `kind: "popup"`, `width: 252`, `height: 196`, `props: { panel: "settings" }`. The copy renders two checkbox rows instead of the sidebar; a click toggles `shared("multi-repo.preferences")` through `setShared`, and `×` or Esc closes it.
