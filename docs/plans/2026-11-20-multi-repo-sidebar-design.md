@@ -4,6 +4,8 @@
 状态：已确认，待实现
 分支：feature_herdr_mods
 
+> **历史设计。** 安装和 layout 入口以 `herdr-mods/multi-repo-sidebar/README.md`、`RECIPE.md` 为准；本文里的 `examples/` 路径已改为 `layouts/Multi-Repo-Sidebar.json`。
+
 ## 背景
 
 Herdr 默认侧边栏把 spaces 和 agents 分成两块平铺列表，无法表达“一个需求涉及多个仓库、每个仓库有 agent 和子 agent”的结构。目标是在 `herdr-mods/{mod}/` 下实现一个侧边栏 mod：以需求为顶层，展示工作区仓库、代码仓库、agent 与 sub-agent 的关联，并补充仓库分支信息。

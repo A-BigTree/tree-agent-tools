@@ -1,6 +1,8 @@
 # Multi-Repo Sidebar Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+>
+> **历史计划。** 安装和 layout 入口以 `herdr-mods/multi-repo-sidebar/README.md`、`RECIPE.md` 为准；本文里的 `examples/` 和 `--with-layout` 已被 `layouts/Multi-Repo-Sidebar.json` 和默认安装流程取代。
 
 **Goal:** 按已确认设计重构 `herdr-mods/multi-repo-sidebar`：需求 space 下统一展示 agent/普通终端树，直接子终端按仓库聚类，后台读取仓库分支。
 

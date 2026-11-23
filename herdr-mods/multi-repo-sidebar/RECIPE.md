@@ -75,6 +75,27 @@ mods/multi-repo-sidebar/
 { "version": "0.3.0", "place": "none", "title": "Multi-Repo Sidebar" }
 ```
 
+## Install
+
+Copy both parts: the mod draws the sidebar, the layout gives Herdr Settings an entry.
+
+```sh
+app="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
+mkdir -p "$app/mods" "$app/layouts"
+rm -rf "$app/mods/multi-repo-sidebar"
+cp -R mods/multi-repo-sidebar "$app/mods/multi-repo-sidebar"
+cp "layouts/Multi-Repo-Sidebar.json" "$app/layouts/Multi-Repo-Sidebar.json"
+herdr-app check "$app/mods/multi-repo-sidebar"
+```
+
+Then switch with `Settings → Look → Layout → Multi-Repo-Sidebar` or:
+
+```sh
+herdr-app do layout.switch '{"name":"Multi-Repo-Sidebar"}'
+```
+
+A mod-only install leaves Settings unchanged; the layout file is the manual entry point.
+
 Add the mod to any layout:
 
 ```json
