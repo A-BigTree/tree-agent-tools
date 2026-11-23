@@ -1,6 +1,6 @@
 # Multi-Repo Sidebar
 
-A Herdr sidebar mod for requirements that fan out across several repositories. Each space becomes a requirement, the workspace repository and its agents sit underneath it, and the repositories that the workspace agent spawned its sub-agents into are shown as dim labels above those agents. Powerlevel10k-style git state sits after each repository name; branch names stay on their own line, so long project names no longer hide them. A gear button opens a small display-settings panel.
+A Herdr sidebar mod for requirements that fan out across several repositories. Each space becomes a requirement, the workspace repository and its agents sit underneath it, and the repositories that the workspace agent spawned its sub-agents into are shown as dim labels above those agents. Powerlevel10k-style git state sits after each repository name; branch names stay on their own line, so long project names no longer hide them. A gear button opens a small display-settings panel. The share also installs a layout card named `multi-repo` under `Settings → Look → Layout`, which is the manual switch entry; it keeps Herdr's default thumbnail, and a mod-only install has no entry at all.
 
 ![Multi-Repo Sidebar](preview.png)
 
@@ -44,7 +44,7 @@ Clicks and keys:
 
 - Requirement row, inactive: `run("space.select", { id })`.
 - Requirement row, active: toggles collapse. Collapsed IDs persist in `localStorage` under `multi-repo.collapsed`.
-- Header gear button: `openOverlay` with this same mod, `kind: "popup"`, `width: 248`, `height: 150`, `props: { panel: "settings" }`. The copy renders two checkbox rows instead of the sidebar; a click toggles `shared("multi-repo.preferences")` through `setShared`, and `×` or Esc closes it.
+- Header gear button: `openOverlay` with this same mod, `kind: "popup"`, `width: 252`, `height: 196`, `props: { panel: "settings" }`. The copy renders two checkbox rows instead of the sidebar; a click toggles `shared("multi-repo.preferences")` through `setShared`, and `×` or Esc closes it.
 - Requirement row, right click: `openOverlay` with the `menu` mod, `props: { tab: "space", target: { id } }`.
 - Workspace repository line: `run("space.select", { id })`.
 - Repository label: focuses its first agent.
@@ -57,6 +57,7 @@ Branch data loads after 500ms, then a 1500ms tick checks the 15s TTL. Up to six 
 ## Built from
 
 ```text
+layouts/multi-repo.json
 mods/multi-repo-sidebar/
   mod.json
   main.js
@@ -71,7 +72,7 @@ mods/multi-repo-sidebar/
 `mod.json`:
 
 ```json
-{ "version": "0.2.0", "place": "none", "title": "Multi-Repo Sidebar" }
+{ "version": "0.3.0", "place": "none", "title": "Multi-Repo Sidebar" }
 ```
 
 Add the mod to any layout:
@@ -86,7 +87,7 @@ Add the mod to any layout:
 }
 ```
 
-The example layout is kept outside this mod folder at `herdr-mods/examples/multi-repo.json`; no layout is shipped with the mod.
+The share also ships `layouts/multi-repo.json`. Herdr Settings lists layouts, not mods: without that file there is no Settings entry. The card's label is the layout filename (`multi-repo`), and it deliberately has no `"preview"`, so Herdr draws its default thumbnail instead of a screenshot. The install script must copy the layout file and the mod folder; switching is `Settings → Look → Layout → multi-repo` or `run("layout.switch", { name: "multi-repo" })`.
 
 Data path:
 
@@ -124,7 +125,7 @@ Icons are seven Lucide SVG files, ISC licensed; `THIRD_PARTY.md` carries the not
 - `git --no-optional-locks status` is required. Without the flag, Herdr's git process can create `.git/index.lock` when the project being viewed is the same repository that contains the mod, which blocks other git commands and causes the sidebar to look like it is twitching.
 - `git status --porcelain=v2` must be supported. Parse failures leave the previous branch/status in place.
 - The mod folder name is part of every icon path (`mods/multi-repo-sidebar/icons/...`). Renaming the folder requires changing `Icon()` and `ProgramIcon` asset paths.
-- `place: "none"` means the mod draws nothing until a layout block points at it. No layout is included.
+- `place: "none"` means the mod draws nothing until a layout block points at it. The shipped layout is the entry point; installing only `mods/multi-repo-sidebar` leaves Settings unchanged and gives the person no place to switch.
 - The settings panel is the same mod under `props().panel === "settings"`; that copy must render no tree and start no git timers. Keep the `shared` key shape stable, or old `shared.json` values will silently reset.
 - There is no aggregate status and no repository/sub-agent fold. Only requirement collapse exists.
 - Only `state: "live"` terminals are shown. Finished sub-agents disappear; the branch cache is in memory and disappears on reload.
@@ -136,8 +137,8 @@ Icons are seven Lucide SVG files, ISC licensed; `THIRD_PARTY.md` carries the not
 ## Done when
 
 1. `herdr-app check mods/multi-repo-sidebar` prints `check passed`.
-2. Add the block above to a layout, switch to it, and the sidebar shows requirement rows, a workspace repository line, a branch line, and top-level agents.
+2. Installing the share puts a card named `multi-repo` with Herdr's default thumbnail under `Settings → Look → Layout`; switching to it shows requirement rows, a workspace repository line, a branch line, and top-level agents.
 3. A repository with more than one live child agent shows one dim repository label and one agent row per child; a child sub-agent under an agent has a tree rail and opens a peek window when clicked.
 4. Each repository name shows git state right after it; the branch line below shows only the branch and never repeats the status. Toggling `Git 状态` off hides every status but keeps branch lines; toggling `仓库分支名` off hides every branch line but keeps status.
-5. Clicking the active requirement row collapses and expands the workspace; clicking an inactive one selects it. Narrowing the sidebar below 160px shows the rail.
+5. Clicking the active requirement row collapses and expands the workspace; clicking an inactive one selects it. Narrowing the sidebar below 160px shows the rail. The settings panel's `在 Herdr 设置中切换布局` row closes it and opens `Settings → Look`.
 6. `herdr-app status` reports `errors: []` after switching layouts.

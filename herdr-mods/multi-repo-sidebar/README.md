@@ -27,15 +27,16 @@ Herdr 现有的 `spaces` / `agents` 是两个平铺列表；这个 mod 把同一
 
 ```bash
 cd herdr-mods/multi-repo-sidebar
-./sync.sh                 # 只安装 mod
-./sync.sh --with-layout   # 同时安装示例 layout
+./sync.sh        # 安装 mod，并把 multi-repo layout 放进 Herdr 设置
+./sync.sh --use  # 安装后直接切换到该 layout
 ```
 
-安装后热加载。切换到示例 layout：
+Herdr 设置里列出的是 `layouts/`，不是 `mods/`。只复制 mod 文件夹时，设置里不会有入口；`sync.sh` 会同时安装 `layouts/multi-repo.json`，设置里卡片的名称是 `multi-repo`，缩略图用 Herdr 默认样式。
 
-```bash
-herdr-app do layout.switch '{"name":"multi-repo"}'
-```
+安装完成后任选一种方式切换：
+
+- Herdr `Settings → Look → Layout → multi-repo`
+- `herdr-app do layout.switch '{"name":"multi-repo"}'`
 
 回到原 layout：
 
@@ -45,7 +46,7 @@ herdr-app do layout.switch '{"name":"main"}'
 
 ## 接入现有 layout
 
-示例 layout 在 `herdr-mods/examples/multi-repo.json`。如果只想改自己的 layout：
+分享的 layout 在 `herdr-mods/multi-repo-sidebar/layouts/multi-repo.json`。如果只想改自己的 layout：
 
 1. 克隆当前 layout：`herdr-app do layout.clone '{"name":"main","as":"my-multi-repo"}'`
 2. 编辑 `~/.config/herdr-app/layouts/my-multi-repo.json`
@@ -69,6 +70,7 @@ herdr-app do layout.switch '{"name":"main"}'
 - 点击工作区仓库行：切换 space；tooltip 显示完整工作区仓库名和分支。
 - 点击顶层终端 / 仓库 / agent / sub-agent 行：聚焦对应终端；没有 pane 的 sub-agent 用 `terminal.peek` 打开 peek 窗口。
 - 点击需求第一行右侧的齿轮按钮：打开显示设置面板，可分别隐藏/显示仓库分支名和 git 状态。
+- 设置面板里的「在 Herdr 设置中切换布局」：关闭面板并打开 `Settings → Look`，在那里选择 `multi-repo` layout。
 - 点击需求第一行右键：打开 Herdr 原生 space 菜单。
 - 侧边栏窄于 160px 时变成 rail：显示需求头像，点击选择 space，底部 `»` 展开。
 

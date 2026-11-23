@@ -92,8 +92,8 @@ export default class RequirementsSidebar extends View {
     openOverlay({
       mod: "multi-repo-sidebar",
       kind: "popup",
-      width: 248,
-      height: 150,
+      width: 252,
+      height: 196,
       props: { panel: "settings" },
     });
   }
@@ -349,6 +349,24 @@ export default class RequirementsSidebar extends View {
             onClick: () => this.togglePreference(key),
           }),
         ),
+      )
+      .child(
+        h_flex()
+          .id("multi-repo-open-layout-settings")
+          .h(30)
+          .px(4)
+          .gap(6)
+          .rounded(6)
+          .items_center()
+          .cursor_pointer()
+          .hover((style) => style.bg(t.hover))
+          .on_click(() => {
+            this.closeSettings();
+            run("app.settings", { section: "look" });
+          })
+          .child(Icon("folder", 12).text_color(t.muted))
+          .child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.muted).child("在 Herdr 设置中切换布局"))
+          .child(div().text_size(11).text_color(t.dim).child("›")),
       )
       .child(div().px(4).pt(2).text_size(10).text_color(t.dim).child("设置保存在 shared.json"));
   }
