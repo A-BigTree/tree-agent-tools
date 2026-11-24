@@ -4,6 +4,8 @@ import {
   DOCK_OFF_TTL,
   dockGroups,
   gridPlan,
+  groupName,
+  nextGroupSequence,
   reconcileDocks,
 } from "../mods/multi-repo-sidebar/lib/docking.js";
 
@@ -55,7 +57,15 @@ test("a parent with a pane in another tab still groups its new children", () => 
     off: {},
   });
   assert.deepEqual(groups[0].children, ["t2"]);
-  assert.match(groups[0].name, /^子代理 · /);
+  assert.equal(groups[0].parent, "t1");
+});
+
+test("group names are a plain sequence per space", () => {
+  assert.equal(groupName(1), "子代理组-1");
+  assert.equal(nextGroupSequence([], 0), 1);
+  assert.equal(nextGroupSequence([{ name: "子代理组-3" }, { name: "总控" }], 0), 4);
+  assert.equal(nextGroupSequence([{ name: "子代理组-2" }], 5), 6);
+  assert.equal(nextGroupSequence([{ name: "子代理组-x" }], 0), 1);
 });
 
 test("dismissed parents and unknown spaces are skipped", () => {

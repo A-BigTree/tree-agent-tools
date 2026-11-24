@@ -24,9 +24,12 @@ import {
 import { baseName, buildRequirements, displayName, normalizeId } from "./lib/model.js";
 import {
   DOCK_OFF_KEY,
+  DOCK_SEQ_KEY,
   DOCKED_KEY,
   dockGroups,
   gridPlan,
+  groupName,
+  nextGroupSequence,
   reconcileDocks,
 } from "./lib/docking.js";
 import {
@@ -387,12 +390,17 @@ export default class RequirementsSidebar extends View {
     }
 
     const space = spaces().find((candidate) => normalizeId(candidate.id) === normalizeId(group.space));
+    const sequence = nextGroupSequence(space?.tabs ?? [], readMap(DOCK_SEQ_KEY)[group.space]);
+    const seqs = readMap(DOCK_SEQ_KEY);
+    seqs[group.space] = sequence;
+    writeMap(DOCK_SEQ_KEY, seqs);
+    const name = groupName(sequence);
     const before = new Set((space?.tabs ?? []).map((tab) => normalizeId(tab.id)));
     this.dock = {
       mode: "create",
       parent: group.parent,
       space: group.space,
-      name: group.name,
+      name,
       before,
       tab: null,
       spacer: null,
@@ -408,7 +416,7 @@ export default class RequirementsSidebar extends View {
       startedAt: Date.now(),
       focus: focused(),
     };
-    run("tab.new", { name: group.name, space: group.space, focus: false });
+    run("tab.new", { name, space: group.space, focus: false });
   }
 
   stepDock(cx) {

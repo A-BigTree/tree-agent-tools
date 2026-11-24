@@ -1,8 +1,22 @@
-import { displayName, normalizeId } from "./model.js";
+import { normalizeId } from "./model.js";
 
 export const DOCKED_KEY = "multi-repo.docked";
 export const DOCK_OFF_KEY = "multi-repo.dockOff";
 export const DOCK_OFF_TTL = 24 * 60 * 60 * 1000;
+export const DOCK_SEQ_KEY = "multi-repo.dockSeq";
+
+export function groupName(sequence) {
+  return `子代理组-${sequence}`;
+}
+
+export function nextGroupSequence(tabs = [], stored = 0) {
+  let max = Number(stored) || 0;
+  for (const tab of tabs) {
+    const match = /^子代理组-(\d+)$/.exec(tab?.name ?? "");
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  return max + 1;
+}
 
 export function spaceFromChain(terminal, byId) {
   let cursor = terminal;
@@ -36,11 +50,9 @@ export function dockGroups({ terminals = [], panes = [], docked = {}, off = {} }
 
     let group = groups.get(parent);
     if (!group) {
-      const parentTerminal = byId.get(parent);
       group = {
         parent,
         space,
-        name: `子代理 · ${parentTerminal ? displayName(parentTerminal) : parent}`,
         tab: docked[parent] ? normalizeId(docked[parent]) : null,
         children: [],
       };

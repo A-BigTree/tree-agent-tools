@@ -57,6 +57,7 @@ Auto docking runs on a 1000ms tick while `autoDock` is on:
 
 - The first tick records every live child terminal without a pane as a baseline and moves nothing.
 - New children are grouped by their direct parent; the parent space comes from `labels["herdr.space"]` or the parent chain.
+- A new tab is named `子代理组-N`, where N is one past the highest existing `子代理组-N` in that space and is stored per space under `multi-repo.dockSeq`.
 - A new tab is created with `run("tab.new", { name, space, focus: false })`. Because `run()` returns `null`, the next tick finds it by comparing the space's tab ids with the snapshot taken before the call.
 - Children are placed with `pane.focus` + `run("terminal.keep", { terminal, place })` following `gridPlan`: stack the first column downwards, then split each row to the right. The tab's initial shell pane is the spacer and is closed at the end.
 - Later batches for the same parent reuse the recorded tab and append downwards from its last pane.

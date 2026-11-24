@@ -196,7 +196,7 @@ test("a parent with a pane in another tab still groups its new children", () => 
     off: {},
   });
   assert.deepEqual(groups[0].children, ["t2"]);
-  assert.match(groups[0].name, /^子代理 · /);
+  assert.equal(groups[0].parent, "t1");
 });
 
 test("dismissed parents and unknown spaces are skipped", () => {
@@ -322,7 +322,7 @@ export function dockGroups({ terminals = [], panes = [], docked = {}, off = {} }
       group = {
         parent,
         space,
-        name: `子代理 · ${parentTerminal ? displayName(parentTerminal) : parent}`,
+        name: `子代理组-${sequence}`,
         tab: docked[parent] ? normalizeId(docked[parent]) : null,
         children: [],
       };
@@ -701,7 +701,7 @@ git commit -m "feat(herdr): auto-dock child agents into a grid tab"
 **Step 1: 版本与文档**
 
 - `mod.json` 的 `version` 改为 `0.4.0`。
-- README「功能」补一条：无 pane 的子 agent 会在同 space 新建 `子代理 · <父名>` tab，按设置面板的列数排成网格；关闭该 tab 后不再重建。
+- README「功能」补一条：无 pane 的子 agent 会在同 space 新建 `子代理组-N` tab，按设置面板的列数排成网格；关闭该 tab 后不再重建。
 - RECIPE 增加一节「Auto docking」：`tab.new → pane.focus → terminal.keep → pane.close(spacer)`，记录键 `multi-repo.docked` / `multi-repo.dockOff`，以及轮询间隔。
 
 **Step 2: 安装到本机并检查**
@@ -725,7 +725,7 @@ for s in d.get('spaces',[]):
 "
 ```
 
-Expected: 出现一个 `子代理 · ...` tab，含 2 个 pane（默认 2 列），且父 agent 的 tab 未变。
+Expected: 出现一个 `子代理组-N` tab，含 2 个 pane（默认 2 列），且父 agent 的 tab 未变。
 
 再验证关掉后不重建：`herdr-app do tab.close '{"id":"<自动 tab id>"}'`，再 `hc run --bg "sleep 120"`，等 3 秒，确认没有新 tab。
 
@@ -747,6 +747,6 @@ git push -u origin feat/multi-repo-sidebar-auto-dock
 
 - `node --test tests/*.test.mjs` 全绿。
 - `herdr-app check mods/multi-repo-sidebar` 通过，`herdr-app status` 为 `errors: []`。
-- 连续创建 2–5 个 hc 子 agent 后，自动出现一个 `子代理 · <父名>` tab，pane 数量与子 agent 一致，默认 2 列。
+- 连续创建 2–5 个 hc 子 agent 后，自动出现一个 `子代理组-N` tab，pane 数量与子 agent 一致，默认 2 列。
 - 手动关闭自动 tab 后，同一父 agent 再创建子 agent 不会重建。
 - 关闭 `自动停靠子 agent` 开关后不再新建 tab。

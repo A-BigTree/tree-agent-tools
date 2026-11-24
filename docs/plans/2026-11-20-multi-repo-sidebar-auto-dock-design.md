@@ -61,7 +61,7 @@
 
 一组子 agent 的步骤：
 
-1. 快照目标 space 的 tab id，`tab.new { name: "子代理 · <父名>", space, focus: false }`。
+1. 快照目标 space 的 tab id，`tab.new { name: "子代理组-N", space, focus: false }`（N 在同一 space 内递增）。
 2. 下一 tick 用 diff 找到新 tab，取它的初始 shell pane 作为 spacer。
 3. 按 `gridPlan` 顺序逐个停靠：`pane.focus` 目标 pane → `terminal.keep { terminal, place }`。
 4. 下一 tick 用 `panes()` 确认子 agent 已落位；3 秒未落位则重试该步。
