@@ -4,6 +4,7 @@ import {
   DOCK_OFF_TTL,
   dockGroups,
   dockableChildren,
+  dockedGroup,
   gridPlan,
   groupName,
   nextGroupSequence,
@@ -72,6 +73,33 @@ test("dockable children are live, direct, and pane-less", () => {
   assert.deepEqual(dockableChildren(terminals, [{ pane: "p1", terminal: "t5" }], "t1"), ["t2"]);
   assert.deepEqual(dockableChildren(terminals, [], "t2"), ["t4"]);
   assert.deepEqual(dockableChildren(terminals, [], "t9"), []);
+});
+
+test("a docked group is found from its parent or any member", () => {
+  const terminals = [
+    terminal("t1", null, { labels: { "herdr.space": "sp1" } }),
+    terminal("t2", "t1"),
+    terminal("t3", "t1"),
+    terminal("t9", null),
+  ];
+  const panes = [
+    { pane: "p1", tab: "tab1", terminal: "t2" },
+    { pane: "p2", tab: "tab1", terminal: "t3" },
+    { pane: "p3", tab: "tab9", terminal: "t9" },
+  ];
+  const docked = { t1: "tab1" };
+  assert.deepEqual(dockedGroup({ terminals, panes, docked, address: "t1" }), {
+    parent: "t1",
+    tab: "tab1",
+    children: ["t2", "t3"],
+  });
+  assert.deepEqual(dockedGroup({ terminals, panes, docked, address: "t2" }), {
+    parent: "t1",
+    tab: "tab1",
+    children: ["t2", "t3"],
+  });
+  assert.equal(dockedGroup({ terminals, panes, docked, address: "t9" }), null);
+  assert.equal(dockedGroup({ terminals, panes, docked, address: "t8" }), null);
 });
 
 test("group names are a plain sequence per space", () => {

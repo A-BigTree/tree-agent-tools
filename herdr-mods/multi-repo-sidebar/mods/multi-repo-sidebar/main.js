@@ -28,12 +28,20 @@ import {
   DOCKED_KEY,
   dockGroups,
   dockableChildren,
+  dockedGroup,
   gridPlan,
   groupName,
   nextGroupSequence,
   reconcileDocks,
   spaceFromChain,
 } from "./lib/docking.js";
+import {
+  GRIDS_KEY,
+  heightFix,
+  planRows,
+  resizePx,
+  widthFix,
+} from "./lib/grid.js";
 import {
   cacheKey,
   dueRequests,
@@ -353,17 +361,165 @@ export default class RequirementsSidebar extends View {
     for (const child of children) this.dockBase.delete(child);
 
     const docked = readMap(DOCKED_KEY);
-    this.startDock({ parent: key, space, tab: docked[key] ?? null, children });
+    if (docked[key]) this.relayoutAgentGroup(key, children);
+    else this.startDock({ parent: key, space, tab: null, children });
+  }
+
+  relayoutAgentGroup(parent, extra = []) {
+    const key = normalizeId(parent);
+    const tab = readMap(DOCKED_KEY)[key];
+    if (!tab) return;
+    const tabId = normalizeId(tab);
+    const children = panes()
+      .filter((pane) => normalizeId(pane.tab) === tabId && pane.terminal)
+      .map((pane) => String(pane.terminal));
+    for (const address of extra) if (!children.includes(address)) children.push(address);
+    if (!children.length) return;
+    this.dock = {
+      mode: "relayout",
+      parent: key,
+      tab: tabId,
+      children,
+      plan: gridPlan(children.length, this.preferences().dockColumns),
+      index: 0,
+      slots: {},
+      waiting: null,
+      waitingStep: null,
+      waitUntil: 0,
+      fails: 0,
+      startedAt: Date.now(),
+      focus: focused(),
+      spacerPane: null,
+      spacerTerminal: null,
+      beforePanes: new Set(),
+      phase: "split",
+      spacerDropped: false,
+    };
   }
 
   openAgentMenu(node) {
     openOverlay({
       mod: "multi-repo-sidebar",
       kind: "popup",
-      width: 240,
-      height: 84,
+      width: 260,
+      height: 118,
       props: { panel: "actions", terminal: node.address },
     });
+  }
+
+  shownTab() {
+    const space = spaces().find((candidate) => candidate.active);
+    const tab = (space?.tabs ?? []).find((candidate) => candidate.active);
+    return tab ? normalizeId(tab.id) : null;
+  }
+
+  equalizeTick() {
+    const grids = readMap(GRIDS_KEY);
+    const tabs = new Set(
+      spaces().flatMap((space) => (space.tabs ?? []).map((tab) => normalizeId(tab.id))),
+    );
+    let pruned = false;
+    for (const key of Object.keys(grids)) {
+      if (!tabs.has(key)) {
+        delete grids[key];
+        pruned = true;
+      }
+    }
+    if (pruned) writeMap(GRIDS_KEY, grids);
+
+    const shown = this.shownTab();
+    if (!shown) return;
+    const spec = grids[shown];
+    if (!spec || !Array.isArray(spec.rows) || !spec.rows.length) return;
+
+    const currentTerminals = terminals();
+    const currentPanes = panes();
+    if (currentPanes.some((pane) => normalizeId(pane.tab) === shown && pane.zoomed)) return;
+
+    const byAddress = new Map(
+      currentTerminals.map((terminal) => [normalizeId(terminal.address), terminal]),
+    );
+    const cols = new Map();
+    const lines = new Map();
+    for (const row of spec.rows) {
+      for (const address of row) {
+        const terminal = byAddress.get(normalizeId(address));
+        if (!terminal) {
+          delete grids[shown];
+          writeMap(GRIDS_KEY, grids);
+          return;
+        }
+        cols.set(address, Number(terminal.cols) || 0);
+        lines.set(address, Number(terminal.rows) || 0);
+      }
+    }
+
+    this.learnResize(shown, spec, cols, lines);
+
+    const width = widthFix(spec.rows, cols);
+    const height = heightFix(spec.rows, lines);
+    if (!width && !height) return;
+
+    const grow = width ? width.delta > 0 : height.delta > 0;
+    const sizeAddress = width
+      ? spec.rows[width.row][width.index]
+      : spec.rows[height.index][0];
+    const handleAddress = width
+      ? spec.rows[width.row][width.index + (grow ? 0 : 1)]
+      : spec.rows[height.index + (grow ? 0 : 1)]?.[0];
+    const delta = width ? width.delta : height.delta;
+    if (!sizeAddress || !handleAddress || !delta) return;
+
+    const paneOf = (address) =>
+      currentPanes.find(
+        (candidate) =>
+          normalizeId(candidate.terminal) === normalizeId(address) &&
+          normalizeId(candidate.tab) === shown,
+      )?.pane;
+    const handle = paneOf(handleAddress);
+    if (!handle) return;
+
+    const pxPer = width ? spec.pxCol ?? 8 : spec.pxRow ?? 17;
+    const px = Math.min(200, Math.abs(resizePx(delta, pxPer)));
+    if (!px) return;
+    spec.pending = {
+      kind: width ? "col" : "row",
+      address: sizeAddress,
+      px,
+      delta,
+      before: (width ? cols : lines).get(sizeAddress) ?? 0,
+    };
+    grids[shown] = spec;
+    writeMap(GRIDS_KEY, grids);
+    run("pane.resize", {
+      direction: width ? (grow ? "right" : "left") : grow ? "down" : "up",
+      pane: handle,
+      px,
+    });
+  }
+
+  learnResize(shown, spec, cols, lines) {
+    const pending = spec.pending;
+    if (!pending) return;
+    spec.pending = null;
+    const after = (pending.kind === "col" ? cols : lines).get(pending.address);
+    const before = Number(pending.before) || 0;
+    const actual = Number(after) - before;
+    if (Number.isFinite(actual) && actual !== 0) {
+      const same = Math.sign(actual) === Math.sign(Number(pending.delta) || 0);
+      const per = Math.abs((pending.px ?? 0) / actual);
+      if (same && per > 0) {
+        if (pending.kind === "col") spec.pxCol = Math.min(30, Math.max(3, per));
+        else spec.pxRow = Math.min(60, Math.max(8, per));
+      } else if (pending.kind === "col") {
+        spec.pxCol = Math.max(3, (spec.pxCol ?? 8) * 0.6);
+      } else {
+        spec.pxRow = Math.max(8, (spec.pxRow ?? 17) * 0.6);
+      }
+    }
+    const grids = readMap(GRIDS_KEY);
+    grids[shown] = spec;
+    writeMap(GRIDS_KEY, grids);
   }
 
   dockTick(cx) {
@@ -373,6 +529,13 @@ export default class RequirementsSidebar extends View {
     if (request?.terminal && Date.now() - Number(request.at) < 15000) {
       setShared("multi-repo.dockRequest", null);
       if (!this.dock) this.dockAgentChildren(String(request.terminal));
+      return;
+    }
+
+    const relayout = shared("multi-repo.relayoutRequest");
+    if (relayout?.parent && Date.now() - Number(relayout.at) < 15000) {
+      setShared("multi-repo.relayoutRequest", null);
+      if (!this.dock) this.relayoutAgentGroup(String(relayout.parent));
       return;
     }
 
@@ -406,9 +569,13 @@ export default class RequirementsSidebar extends View {
     for (const group of groups) {
       const children = group.children.filter((address) => !this.dockBase.has(address));
       if (!children.length) continue;
-      this.startDock({ ...group, tab: records.docked[group.parent] ?? null, children });
+      const tab = records.docked[group.parent] ?? null;
+      if (tab) this.relayoutAgentGroup(group.parent, children);
+      else this.startDock({ ...group, tab: null, children });
       return;
     }
+
+    this.equalizeTick();
   }
 
   startDock(group) {
@@ -475,6 +642,45 @@ export default class RequirementsSidebar extends View {
           (dock.mode !== "append" || normalizeId(pane.tab) === dock.tab),
       )?.pane ?? null;
 
+    if (dock.mode === "relayout" && !dock.waiting) {
+      const tabPanes = currentPanes.filter((pane) => normalizeId(pane.tab) === dock.tab);
+      if (dock.phase === "split") {
+        const last = tabPanes[tabPanes.length - 1]?.pane ?? null;
+        if (!last) {
+          this.abortDock(false);
+          return;
+        }
+        dock.beforePanes = new Set(tabPanes.map((pane) => pane.pane));
+        run("pane.split", { direction: "down", pane: last });
+        dock.phase = "spacer";
+        dock.startedAt = Date.now();
+        return;
+      }
+      if (dock.phase === "spacer") {
+        const fresh = tabPanes.find((pane) => !dock.beforePanes.has(pane.pane));
+        if (!fresh) {
+          if (Date.now() - dock.startedAt > 5000) this.abortDock(false);
+          return;
+        }
+        dock.spacerPane = fresh.pane;
+        dock.spacerTerminal = fresh.terminal;
+        dock.phase = "close";
+        dock.startedAt = Date.now();
+        return;
+      }
+      if (dock.phase === "close") {
+        const old = tabPanes.filter((pane) => pane.pane !== dock.spacerPane);
+        if (old.length) {
+          for (const pane of old) if (pane.terminal) run("terminal.park", { terminal: pane.terminal });
+          dock.startedAt = Date.now();
+          return;
+        }
+        dock.phase = "grid";
+        dock.startedAt = Date.now();
+        return;
+      }
+    }
+
     if (dock.mode === "create" && !dock.tab) {
       const space = spaces().find((candidate) => normalizeId(candidate.id) === normalizeId(dock.space));
       const fresh = (space?.tabs ?? []).filter((tab) => !dock.before.has(normalizeId(tab.id)));
@@ -512,7 +718,7 @@ export default class RequirementsSidebar extends View {
       }
     }
 
-    if (dock.mode === "create" && dock.spacerPane && !dock.spacerDropped) {
+    if ((dock.mode === "create" || dock.mode === "relayout") && dock.spacerPane && !dock.spacerDropped) {
       if (dock.index > 0) {
         run("pane.close", { pane: dock.spacerPane });
         dock.spacerDropped = true;
@@ -583,6 +789,20 @@ export default class RequirementsSidebar extends View {
       writeMap(DOCKED_KEY, docked);
       if (dock.spacerPane && !dock.spacerDropped) run("pane.close", { pane: dock.spacerPane });
     }
+    const grids = readMap(GRIDS_KEY);
+    if (dock.mode === "create" || dock.mode === "relayout") {
+      grids[normalizeId(dock.tab)] = {
+        rows: planRows(dock.plan, dock.children),
+        columns: this.preferences().dockColumns,
+        pxCol: 8,
+        pxRow: 17,
+        pending: null,
+      };
+      writeMap(GRIDS_KEY, grids);
+    } else if (grids[normalizeId(dock.tab)]) {
+      delete grids[normalizeId(dock.tab)];
+      writeMap(GRIDS_KEY, grids);
+    }
     const focus = dock.focus;
     this.dock = null;
     this.dockCooldown = Date.now();
@@ -597,7 +817,7 @@ export default class RequirementsSidebar extends View {
     if (!dock) return;
     this.dockCooldown = Date.now();
     this.markDocked(dock.children);
-    if (dismiss) {
+    if (dismiss && dock.mode !== "relayout") {
       const off = readMap(DOCK_OFF_KEY);
       off[dock.parent] = Date.now();
       writeMap(DOCK_OFF_KEY, off);
@@ -745,6 +965,13 @@ export default class RequirementsSidebar extends View {
   actions(t) {
     const address = String(props()?.terminal ?? "");
     const count = dockableChildren(terminals(), panes(), address).length;
+    const group = dockedGroup({
+      terminals: terminals(),
+      panes: panes(),
+      docked: readMap(DOCKED_KEY),
+      address,
+    });
+    const arrange = group && group.children.length >= 2 ? group : null;
     return v_flex()
       .id("multi-repo-actions")
       .size_full()
@@ -775,6 +1002,30 @@ export default class RequirementsSidebar extends View {
               .child("×"),
           ),
       )
+      .when(Boolean(arrange), (el) =>
+        el.child(
+          h_flex()
+            .id("multi-repo-relayout")
+            .h(30)
+            .px(4)
+            .gap(6)
+            .rounded(6)
+            .items_center()
+            .cursor_pointer()
+            .hover((style) => style.bg(t.hover))
+            .on_click(() => this.requestRelayout(arrange.parent))
+            .child(Icon("branch", 12).text_color(t.accent))
+            .child(
+              div()
+                .flex_1()
+                .min_w(0)
+                .truncate()
+                .text_size(11.5)
+                .text_color(t.foreground)
+                .child(`按 ${this.preferences().dockColumns} 列重新排列（${arrange.children.length}）`),
+            ),
+        ),
+      )
       .child(
         h_flex()
           .id("multi-repo-dock-children")
@@ -804,6 +1055,11 @@ export default class RequirementsSidebar extends View {
 
   requestDock(address) {
     setShared("multi-repo.dockRequest", { terminal: address, at: Date.now() });
+    this.closeSettings();
+  }
+
+  requestRelayout(parent) {
+    setShared("multi-repo.relayoutRequest", { parent, at: Date.now() });
     this.closeSettings();
   }
 

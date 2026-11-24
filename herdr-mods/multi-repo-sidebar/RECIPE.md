@@ -63,6 +63,8 @@ Auto docking runs on a 1000ms tick while `autoDock` is on:
 - A new tab is created with `run("tab.new", { name, space, focus: false })`. Because `run()` returns `null`, the next tick finds it by comparing the space's tab ids with the snapshot taken before the call.
 - Children are placed with `pane.focus` + `run("terminal.keep", { terminal, place })` following `gridPlan`: stack the first column downwards, then split each row to the right. The tab's initial shell pane is the spacer and is closed at the end.
 - Later batches for the same parent reuse the recorded tab and append downwards from its last pane.
+- Lazy equalization runs only while the tab is shown. Each grid spec (rows of terminal addresses, learned px per cell) is kept under `multi-repo.grids`. One divider move per tick, left-to-right and top-to-bottom: grow pane j with `pane.resize` direction `right`/`down` on pane j, shrink it by moving the next pane's `left`/`up` divider `px` back. Terminal `cols`/`rows` are the feedback; the loop stops when every row differs by at most one cell.
+- Later batches relayout the tab instead of appending: `terminal.park` gives the panes back (terminals keep running), a temporary shell pane is split out, the grid is rebuilt from all children, and the new spec replaces the old one.
 - A tab the person closes is recorded under `multi-repo.dockOff`; its parent is not docked again for 24 hours or until the parent exits.
 
 Branch data loads after 500ms, then a 1500ms tick checks the 15s TTL. Up to six git reads run at once. Local repository roots are watched with `watchFolder`; a change only marks the cache stale, so the last branch/status stays visible while the next read runs. The view only redraws when a visible branch or status value actually changes.

@@ -18,6 +18,29 @@ export function nextGroupSequence(tabs = [], stored = 0) {
   return max + 1;
 }
 
+export function dockedGroup({ terminals = [], panes = [], docked = {}, address = "" } = {}) {
+  const key = normalizeId(address);
+  const live = new Set(
+    terminals.filter((terminal) => terminal?.state === "live").map((terminal) => normalizeId(terminal.address)),
+  );
+  let parent = Object.prototype.hasOwnProperty.call(docked, key) ? key : null;
+  if (!parent) {
+    const pane = panes.find((candidate) => normalizeId(candidate.terminal) === key);
+    if (!pane) return null;
+    parent =
+      Object.keys(docked).find((name) => normalizeId(docked[name]) === normalizeId(pane.tab)) ?? null;
+  }
+  if (!parent) return null;
+  const tab = normalizeId(docked[parent]);
+  const children = panes
+    .filter(
+      (pane) =>
+        pane.terminal && normalizeId(pane.tab) === tab && live.has(normalizeId(pane.terminal)),
+    )
+    .map((pane) => String(pane.terminal));
+  return { parent, tab, children };
+}
+
 export function dockableChildren(terminals = [], panes = [], parent = "") {
   const key = normalizeId(parent);
   const paneTerminals = new Set(

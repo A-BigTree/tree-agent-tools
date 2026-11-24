@@ -83,6 +83,18 @@
 
 关闭 spacer 后两列精确 50/50；行高沿用 Herdr 默认分割比例（3 行约 50/25/25）。Herdr 不暴露 pane 尺寸，`pane.resize` 只能猜像素，因此不做归一化。
 
+## 懒等分
+
+Herdr 的 split 固定 50/50，3 列会变成 50/25/25。mod 在建好网格后记录每个 tab 的 `rows`（终端地址二维数组）到 `multi-repo.grids`，并在该 tab 被显示时逐 tick 移动分隔线：
+
+- 反馈来自终端可读的 `cols` / `rows` 整数，不需要窗口尺寸。
+- 同一行按从左到右修分隔线；同一列按从上到下。
+- 放大第 j 个 pane：对 pane j 执行 `pane.resize direction:"right"`；缩小它：对 pane j+1 执行 `direction:"left"`，竖向同理用 `down`/`up`。始终用正 px。
+- 学到的“每字符像素”存进 spec；符号相反时步长乘以 0.6 阻尼，单次最多 200px。
+- 收敛条件：同一行/列相差 ≤1 个字符；2 列或 2 行天然相等，直接跳过。
+- tab 被关闭或重建时清理 spec；pane 被 zoom 时暂停。
+- 后续批次改为整组 relayout（`terminal.park` 收回 pane，再重新停靠），保证新网格也有 spec。
+
 ## 设置
 
 偏好继续存 `shared("multi-repo.preferences")`，新增：
