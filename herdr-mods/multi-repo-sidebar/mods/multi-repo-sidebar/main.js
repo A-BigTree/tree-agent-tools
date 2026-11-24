@@ -405,6 +405,7 @@ export default class RequirementsSidebar extends View {
       tab: null,
       spacer: null,
       spacerPane: null,
+      spacerDropped: false,
       children: group.children,
       plan: gridPlan(group.children.length, this.preferences().dockColumns),
       index: 0,
@@ -463,6 +464,14 @@ export default class RequirementsSidebar extends View {
         dock.waitUntil = Date.now() + 3000;
         return;
       } else {
+        return;
+      }
+    }
+
+    if (dock.mode === "create" && dock.spacerPane && !dock.spacerDropped) {
+      if (dock.index > 0) {
+        run("pane.close", { pane: dock.spacerPane });
+        dock.spacerDropped = true;
         return;
       }
     }
@@ -528,7 +537,7 @@ export default class RequirementsSidebar extends View {
       const docked = readMap(DOCKED_KEY);
       docked[dock.parent] = dock.tab;
       writeMap(DOCKED_KEY, docked);
-      if (dock.spacerPane) run("pane.close", { pane: dock.spacerPane });
+      if (dock.spacerPane && !dock.spacerDropped) run("pane.close", { pane: dock.spacerPane });
     }
     const focus = dock.focus;
     this.dock = null;
