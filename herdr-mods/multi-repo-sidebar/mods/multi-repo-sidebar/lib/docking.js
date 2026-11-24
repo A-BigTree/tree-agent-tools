@@ -18,20 +18,90 @@ export function nextGroupSequence(tabs = [], stored = 0) {
   return max + 1;
 }
 
-export function dockedGroup({ terminals = [], panes = [], docked = {}, address = "" } = {}) {
+export function adoptDockedTabs({ spaces = [], terminals = [], panes = [], docked = {} } = {}) {
+  const live = new Set(
+    terminals.filter((terminal) => terminal?.state === "live").map((terminal) => normalizeId(terminal.address)),
+  );
+  const parentOf = new Map(
+    terminals
+      .filter((terminal) => terminal?.state === "live" && terminal.parent)
+      .map((terminal) => [normalizeId(terminal.address), normalizeId(terminal.parent)]),
+  );
+  const next = { ...docked };
+  for (const space of spaces) {
+    for (const tab of space?.tabs ?? []) {
+      if (!/^子代理组-\d+$/.test(tab?.name ?? "")) continue;
+      const tabId = normalizeId(tab.id);
+      const parents = new Set(
+        panes
+          .filter((pane) => normalizeId(pane.tab) === tabId && pane.terminal && live.has(normalizeId(pane.terminal)))
+          .map((pane) => parentOf.get(normalizeId(pane.terminal)))
+          .filter(Boolean),
+      );
+      if (parents.size === 1) next[[...parents][0]] = tabId;
+    }
+  }
+  return next;
+}
+
+export function dockedGroup({ spaces = [], terminals = [], panes = [], docked = {}, address = "" } = {}) {
   const key = normalizeId(address);
   const live = new Set(
     terminals.filter((terminal) => terminal?.state === "live").map((terminal) => normalizeId(terminal.address)),
   );
-  let parent = Object.prototype.hasOwnProperty.call(docked, key) ? key : null;
-  if (!parent) {
-    const pane = panes.find((candidate) => normalizeId(candidate.terminal) === key);
-    if (!pane) return null;
-    parent =
-      Object.keys(docked).find((name) => normalizeId(docked[name]) === normalizeId(pane.tab)) ?? null;
+  const parentOf = new Map(
+    terminals
+      .filter((terminal) => terminal?.state === "live" && terminal.parent)
+      .map((terminal) => [normalizeId(terminal.address), normalizeId(terminal.parent)]),
+  );
+  const tabNames = new Map();
+  for (const space of spaces) {
+    for (const tab of space?.tabs ?? []) tabNames.set(normalizeId(tab.id), tab?.name ?? "");
   }
-  if (!parent) return null;
-  const tab = normalizeId(docked[parent]);
+
+  let parent = Object.prototype.hasOwnProperty.call(docked, key) ? key : null;
+  let tab = parent ? normalizeId(docked[parent]) : null;
+  if (!tab) {
+    const pane = panes.find((candidate) => normalizeId(candidate.terminal) === key);
+    const paneTab = pane ? normalizeId(pane.tab) : null;
+    if (!parent) parent = parentOf.get(key) ?? null;
+    if (paneTab) {
+      const owner = Object.keys(docked).find(
+        (name) => normalizeId(docked[name]) === paneTab,
+      );
+      if (owner) {
+        parent = parent ?? owner;
+        tab = paneTab;
+      } else if (/^子代理组-\d+$/.test(tabNames.get(paneTab) ?? "")) {
+        tab = paneTab;
+      }
+    }
+  }
+
+  if (!tab) {
+    const candidate = parent ?? key;
+    for (const [tabId, name] of tabNames) {
+      if (!/^子代理组-\d+$/.test(name)) continue;
+      const parents = new Set(
+        panes
+          .filter(
+            (pane) =>
+              normalizeId(pane.tab) === tabId &&
+              pane.terminal &&
+              live.has(normalizeId(pane.terminal)),
+          )
+          .map((pane) => parentOf.get(normalizeId(pane.terminal)))
+          .filter(Boolean),
+      );
+      if (parents.size === 1 && parents.has(candidate)) {
+        parent = candidate;
+        tab = tabId;
+        break;
+      }
+    }
+  }
+
+  if (!parent || !tab) return null;
   const children = panes
     .filter(
       (pane) =>

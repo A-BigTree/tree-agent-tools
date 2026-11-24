@@ -26,6 +26,7 @@ import {
   DOCK_OFF_KEY,
   DOCK_SEQ_KEY,
   DOCKED_KEY,
+  adoptDockedTabs,
   dockGroups,
   dockableChildren,
   dockedGroup,
@@ -549,8 +550,15 @@ export default class RequirementsSidebar extends View {
     const currentTerminals = terminals();
     const currentPanes = panes();
     const docked = readMap(DOCKED_KEY);
+    const adopted = adoptDockedTabs({
+      spaces: currentSpaces,
+      terminals: currentTerminals,
+      panes: currentPanes,
+      docked,
+    });
+    if (JSON.stringify(adopted) !== JSON.stringify(docked)) writeMap(DOCKED_KEY, adopted);
     const off = readMap(DOCK_OFF_KEY);
-    const groups = dockGroups({ terminals: currentTerminals, panes: currentPanes, docked, off });
+    const groups = dockGroups({ terminals: currentTerminals, panes: currentPanes, docked: adopted, off });
 
     // Children that existed before the mod started are not moved.
     if (!this.dockBase) {
@@ -559,7 +567,7 @@ export default class RequirementsSidebar extends View {
     }
 
     const records = reconcileDocks(
-      { spaces: currentSpaces, terminals: currentTerminals, docked, off },
+      { spaces: currentSpaces, terminals: currentTerminals, docked: adopted, off },
       groups,
     );
     if (JSON.stringify(records.docked) !== JSON.stringify(docked)) writeMap(DOCKED_KEY, records.docked);
@@ -966,6 +974,7 @@ export default class RequirementsSidebar extends View {
     const address = String(props()?.terminal ?? "");
     const count = dockableChildren(terminals(), panes(), address).length;
     const group = dockedGroup({
+      spaces: spaces(),
       terminals: terminals(),
       panes: panes(),
       docked: readMap(DOCKED_KEY),

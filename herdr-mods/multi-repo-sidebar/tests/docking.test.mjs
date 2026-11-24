@@ -4,6 +4,7 @@ import {
   DOCK_OFF_TTL,
   dockGroups,
   dockableChildren,
+  adoptDockedTabs,
   dockedGroup,
   gridPlan,
   groupName,
@@ -100,6 +101,32 @@ test("a docked group is found from its parent or any member", () => {
   });
   assert.equal(dockedGroup({ terminals, panes, docked, address: "t9" }), null);
   assert.equal(dockedGroup({ terminals, panes, docked, address: "t8" }), null);
+});
+
+test("auto-named tabs rebuild the parent mapping", () => {
+  const terminals = [
+    terminal("t1", null, { labels: { "herdr.space": "sp1" } }),
+    terminal("t2", "t1"),
+    terminal("t3", "t1"),
+    terminal("t9", null),
+  ];
+  const panes = [
+    { pane: "p1", tab: "tab1", terminal: "t2" },
+    { pane: "p2", tab: "tab1", terminal: "t3" },
+    { pane: "p3", tab: "tab9", terminal: "t9" },
+  ];
+  const spaces = [
+    { id: "sp1", tabs: [{ id: "tab1", name: "子代理组-1" }, { id: "tab9", name: "总控" }] },
+  ];
+  assert.deepEqual(adoptDockedTabs({ spaces, terminals, panes, docked: {} }), { t1: "tab1" });
+  assert.deepEqual(
+    dockedGroup({ spaces, terminals, panes, docked: {}, address: "t2" }),
+    { parent: "t1", tab: "tab1", children: ["t2", "t3"] },
+  );
+  assert.deepEqual(
+    dockedGroup({ spaces, terminals, panes, docked: {}, address: "t1" }),
+    { parent: "t1", tab: "tab1", children: ["t2", "t3"] },
+  );
 });
 
 test("group names are a plain sequence per space", () => {
