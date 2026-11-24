@@ -45,13 +45,27 @@ Clicks and keys:
 - Requirement row drag: mouse down stores the space id, mouse move marks the row under the pointer when it is on the same machine, mouse up runs `run("space.move", { id: from, index: target + 1 })`; a 2px `accent` line marks the drop edge and the dragged row dims to 0.5 opacity.
 - Requirement row, inactive: `run("space.select", { id })`.
 - Requirement row, active: toggles collapse. Collapsed IDs persist in `localStorage` under `multi-repo.collapsed`.
-- Header gear button: `openOverlay` with this same mod, `kind: "popup"`, `width: 252`, `height: 196`, `props: { panel: "settings" }`. The copy renders two checkbox rows instead of the sidebar; a click toggles `shared("multi-repo.preferences")` through `setShared`, and `×` or Esc closes it.
+- Header gear button: `openOverlay` with this same mod, `kind: "popup"`, `width: 280`, `height: 320`, `props: { panel: "settings" }`. The copy renders three checkbox rows and a column stepper instead of the sidebar; a click toggles `shared("multi-repo.preferences")` through `setShared`, and `×` or Esc closes it.
 - Requirement row, right click: `openOverlay` with the `menu` mod, `props: { tab: "space", target: { id } }`.
 - Workspace repository line: `run("space.select", { id })`.
 - Repository label: focuses its first agent.
 - Terminal with a pane: `run("pane.focus", { pane })`.
 - Terminal with no pane (a child sub-agent): `run("terminal.peek", { terminal })`, which opens the peek window.
 - Narrow rail avatar: selects the space. `»`: restores `sidebar.width` from `shared()` or calls `run("layout.resize", { id: "sidebar", px: 76/44 })`.
+
+Right-click an agent row opens this mod's small popup (`props: { panel: "actions", terminal }`). Its item dock count comes from `dockableChildren(terminals(), panes(), address)`; clicking it writes `shared("multi-repo.dockRequest")` and closes the popup. The sidebar instance picks the request up on its next tick, clears it, drops any `dockOff` entry for that parent, and runs the same `startDock` state machine (create or append).
+
+Auto docking runs on a 1000ms tick while `autoDock` is on:
+
+- The first tick records every live child terminal without a pane as a baseline and moves nothing.
+- New children are grouped by their direct parent; the parent space comes from `labels["herdr.space"]` or the parent chain.
+- A new tab is named `子代理组-N`, where N is one past the highest existing `子代理组-N` in that space and is stored per space under `multi-repo.dockSeq`.
+- A new tab is created with `run("tab.new", { name, space, focus: false })`. Because `run()` returns `null`, the next tick finds it by comparing the space's tab ids with the snapshot taken before the call.
+- Children are placed with `pane.focus` + `run("terminal.keep", { terminal, place })` following `gridPlan`: stack the first column downwards, then split each row to the right. The tab's initial shell pane is the spacer and is closed at the end.
+- Later batches for the same parent reuse the recorded tab and append downwards from its last pane.
+- Lazy equalization runs only while the tab is shown. Each grid spec (rows of terminal addresses, learned px per cell) is kept under `multi-repo.grids`. One divider move per tick, left-to-right and top-to-bottom: grow pane j with `pane.resize` direction `right`/`down` on pane j, shrink it by moving the next pane's `left`/`up` divider `px` back. Terminal `cols`/`rows` are the feedback; the loop stops when every row differs by at most one cell.
+- Later batches relayout the tab instead of appending: `terminal.park` gives the panes back (terminals keep running), a temporary shell pane is split out, the grid is rebuilt from all children, and the new spec replaces the old one.
+- A tab the person closes is recorded under `multi-repo.dockOff`; its parent is not docked again for 24 hours or until the parent exits.
 
 Branch data loads after 500ms, then a 1500ms tick checks the 15s TTL. Up to six git reads run at once. Local repository roots are watched with `watchFolder`; a change only marks the cache stale, so the last branch/status stays visible while the next read runs. The view only redraws when a visible branch or status value actually changes.
 

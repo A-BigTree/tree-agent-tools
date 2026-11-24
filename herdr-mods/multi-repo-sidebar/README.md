@@ -22,6 +22,9 @@ Herdr 现有的 `spaces` / `agents` 是两个平铺列表；这个 mod 把同一
 - 仓库名优先取 `git rev-parse --show-toplevel` 的目录名；拿不到时回退到 cwd 目录名。
 - 只展示 `state: "live"` 的终端；已结束的终端不显示。
 - 不显示聚合状态；需求行支持点击折叠/展开。
+- 手动停靠：右键任意 agent 行，选「停靠子 agent（N）」，会把该 agent 当前所有无 pane 的直接子 agent 停靠到同一个 tab；不受启动基线、列数以外的限制，也会清掉该 agent 的「手动关闭不再重建」记录。
+- 懒等分：切到自动停靠 tab 时，mod 用终端 `cols`/`rows` 反馈把同一行/列的分隔线逐步调到等分（约几秒，误差 ±1 个字符）；2 列或 2 行时天然相等，无需调整。
+- 自动停靠：同一父 agent 的无 pane 子 agent 会在父 agent 所在 space 新建 `子代理组-N` tab（N 在同一 space 内递增），按设置里的列数（默认 2）排成网格；同父的后续子 agent 追加到同一个 tab。mod 启动时已存在的子 agent 不会被移动；手动关闭该 tab 后不再为该父 agent 重建。
 
 ## 安装
 

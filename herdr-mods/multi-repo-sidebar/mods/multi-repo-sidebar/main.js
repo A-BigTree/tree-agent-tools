@@ -21,7 +21,28 @@ import {
   watchFolder,
   window,
 } from "herdr";
-import { baseName, buildRequirements, displayName } from "./lib/model.js";
+import { baseName, buildRequirements, displayName, normalizeId } from "./lib/model.js";
+import {
+  DOCK_OFF_KEY,
+  DOCK_SEQ_KEY,
+  DOCKED_KEY,
+  adoptDockedTabs,
+  dockGroups,
+  dockableChildren,
+  dockedGroup,
+  gridPlan,
+  groupName,
+  nextGroupSequence,
+  reconcileDocks,
+  spaceFromChain,
+} from "./lib/docking.js";
+import {
+  GRIDS_KEY,
+  heightFix,
+  planRows,
+  resizePx,
+  widthFix,
+} from "./lib/grid.js";
 import {
   cacheKey,
   dueRequests,
@@ -33,6 +54,7 @@ import {
 import {
   PREFERENCES_KEY,
   PREFERENCE_TOGGLES,
+  clampDockColumns,
   normalizePreferences,
   togglePreference as flipPreference,
 } from "./lib/preferences.js";
@@ -62,6 +84,23 @@ function writeSet(key, value) {
   localStorage.setItem(key, JSON.stringify([...value]));
 }
 
+function readMap(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) ?? "{}");
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeMap(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function slotKey(slot) {
+  return `${slot.row}:${slot.col}`;
+}
+
 export default class RequirementsSidebar extends View {
   init(_props, cx) {
     this.scroll = ScrollHandle.new();
@@ -75,10 +114,15 @@ export default class RequirementsSidebar extends View {
     this.collapsed = readSet("multi-repo.collapsed");
     this.pressed = null;
     this.over = null;
-    this.panel = props()?.panel === "settings" ? "settings" : "sidebar";
+    this.dock = null;
+    this.dockBase = null;
+    this.dockCooldown = 0;
+    const panel = props()?.panel;
+    this.panel = panel === "settings" || panel === "actions" ? panel : "sidebar";
     if (!checking() && this.panel === "sidebar") {
       cx.timer.after(500, (cx) => this.refreshBranches(cx));
       cx.timer.every(1500, (cx) => this.refreshBranches(cx));
+      cx.timer.every(1000, (cx) => this.dockTick(cx));
     }
   }
 
@@ -94,8 +138,8 @@ export default class RequirementsSidebar extends View {
     openOverlay({
       mod: "multi-repo-sidebar",
       kind: "popup",
-      width: 252,
-      height: 196,
+      width: 280,
+      height: 320,
       props: { panel: "settings" },
     });
   }
@@ -298,9 +342,507 @@ export default class RequirementsSidebar extends View {
     });
   }
 
+  dockAgentChildren(address) {
+    const currentTerminals = terminals();
+    const byId = new Map(currentTerminals.map((terminal) => [normalizeId(terminal.address), terminal]));
+    const parent = byId.get(normalizeId(address));
+    if (!parent) return;
+    const space = spaceFromChain(parent, byId);
+    if (!space) return;
+    const children = dockableChildren(currentTerminals, panes(), parent.address);
+    if (!children.length) return;
+
+    const key = normalizeId(parent.address);
+    const off = readMap(DOCK_OFF_KEY);
+    if (off[key]) {
+      delete off[key];
+      writeMap(DOCK_OFF_KEY, off);
+    }
+    this.dockBase = this.dockBase ?? new Set();
+    for (const child of children) this.dockBase.delete(child);
+
+    const docked = readMap(DOCKED_KEY);
+    if (docked[key]) this.relayoutAgentGroup(key, children);
+    else this.startDock({ parent: key, space, tab: null, children });
+  }
+
+  relayoutAgentGroup(parent, extra = []) {
+    const key = normalizeId(parent);
+    const tab = readMap(DOCKED_KEY)[key];
+    if (!tab) return;
+    const tabId = normalizeId(tab);
+    const children = panes()
+      .filter((pane) => normalizeId(pane.tab) === tabId && pane.terminal)
+      .map((pane) => String(pane.terminal));
+    for (const address of extra) if (!children.includes(address)) children.push(address);
+    if (!children.length) return;
+    this.dock = {
+      mode: "relayout",
+      parent: key,
+      tab: tabId,
+      children,
+      plan: gridPlan(children.length, this.preferences().dockColumns),
+      index: 0,
+      slots: {},
+      waiting: null,
+      waitingStep: null,
+      waitUntil: 0,
+      fails: 0,
+      startedAt: Date.now(),
+      focus: focused(),
+      spacerPane: null,
+      spacerTerminal: null,
+      beforePanes: new Set(),
+      phase: "split",
+      spacerDropped: false,
+    };
+  }
+
+  openAgentMenu(node) {
+    openOverlay({
+      mod: "multi-repo-sidebar",
+      kind: "popup",
+      width: 260,
+      height: 118,
+      props: { panel: "actions", terminal: node.address },
+    });
+  }
+
+  shownTab() {
+    const space = spaces().find((candidate) => candidate.active);
+    const tab = (space?.tabs ?? []).find((candidate) => candidate.active);
+    return tab ? normalizeId(tab.id) : null;
+  }
+
+  equalizeTick() {
+    const grids = readMap(GRIDS_KEY);
+    const tabs = new Set(
+      spaces().flatMap((space) => (space.tabs ?? []).map((tab) => normalizeId(tab.id))),
+    );
+    let pruned = false;
+    for (const key of Object.keys(grids)) {
+      if (!tabs.has(key)) {
+        delete grids[key];
+        pruned = true;
+      }
+    }
+    if (pruned) writeMap(GRIDS_KEY, grids);
+
+    const shown = this.shownTab();
+    if (!shown) return;
+    const spec = grids[shown];
+    if (!spec || !Array.isArray(spec.rows) || !spec.rows.length) return;
+
+    const currentTerminals = terminals();
+    const currentPanes = panes();
+    if (currentPanes.some((pane) => normalizeId(pane.tab) === shown && pane.zoomed)) return;
+
+    const byAddress = new Map(
+      currentTerminals.map((terminal) => [normalizeId(terminal.address), terminal]),
+    );
+    const cols = new Map();
+    const lines = new Map();
+    for (const row of spec.rows) {
+      for (const address of row) {
+        const terminal = byAddress.get(normalizeId(address));
+        if (!terminal) {
+          delete grids[shown];
+          writeMap(GRIDS_KEY, grids);
+          return;
+        }
+        cols.set(address, Number(terminal.cols) || 0);
+        lines.set(address, Number(terminal.rows) || 0);
+      }
+    }
+
+    this.learnResize(shown, spec, cols, lines);
+
+    const width = widthFix(spec.rows, cols);
+    const height = heightFix(spec.rows, lines);
+    if (!width && !height) return;
+
+    const grow = width ? width.delta > 0 : height.delta > 0;
+    const sizeAddress = width
+      ? spec.rows[width.row][width.index]
+      : spec.rows[height.index][0];
+    const handleAddress = width
+      ? spec.rows[width.row][width.index + (grow ? 0 : 1)]
+      : spec.rows[height.index + (grow ? 0 : 1)]?.[0];
+    const delta = width ? width.delta : height.delta;
+    if (!sizeAddress || !handleAddress || !delta) return;
+
+    const paneOf = (address) =>
+      currentPanes.find(
+        (candidate) =>
+          normalizeId(candidate.terminal) === normalizeId(address) &&
+          normalizeId(candidate.tab) === shown,
+      )?.pane;
+    const handle = paneOf(handleAddress);
+    if (!handle) return;
+
+    const pxPer = width ? spec.pxCol ?? 8 : spec.pxRow ?? 17;
+    const px = Math.min(200, Math.abs(resizePx(delta, pxPer)));
+    if (!px) return;
+    spec.pending = {
+      kind: width ? "col" : "row",
+      address: sizeAddress,
+      px,
+      delta,
+      before: (width ? cols : lines).get(sizeAddress) ?? 0,
+    };
+    grids[shown] = spec;
+    writeMap(GRIDS_KEY, grids);
+    run("pane.resize", {
+      direction: width ? (grow ? "right" : "left") : grow ? "down" : "up",
+      pane: handle,
+      px,
+    });
+  }
+
+  learnResize(shown, spec, cols, lines) {
+    const pending = spec.pending;
+    if (!pending) return;
+    spec.pending = null;
+    const after = (pending.kind === "col" ? cols : lines).get(pending.address);
+    const before = Number(pending.before) || 0;
+    const actual = Number(after) - before;
+    if (Number.isFinite(actual) && actual !== 0) {
+      const same = Math.sign(actual) === Math.sign(Number(pending.delta) || 0);
+      const per = Math.abs((pending.px ?? 0) / actual);
+      if (same && per > 0) {
+        if (pending.kind === "col") spec.pxCol = Math.min(30, Math.max(3, per));
+        else spec.pxRow = Math.min(60, Math.max(8, per));
+      } else if (pending.kind === "col") {
+        spec.pxCol = Math.max(3, (spec.pxCol ?? 8) * 0.6);
+      } else {
+        spec.pxRow = Math.max(8, (spec.pxRow ?? 17) * 0.6);
+      }
+    }
+    const grids = readMap(GRIDS_KEY);
+    grids[shown] = spec;
+    writeMap(GRIDS_KEY, grids);
+  }
+
+  dockTick(cx) {
+    if (checking()) return;
+
+    const request = shared("multi-repo.dockRequest");
+    if (request?.terminal && Date.now() - Number(request.at) < 15000) {
+      setShared("multi-repo.dockRequest", null);
+      if (!this.dock) this.dockAgentChildren(String(request.terminal));
+      return;
+    }
+
+    const relayout = shared("multi-repo.relayoutRequest");
+    if (relayout?.parent && Date.now() - Number(relayout.at) < 15000) {
+      setShared("multi-repo.relayoutRequest", null);
+      if (!this.dock) this.relayoutAgentGroup(String(relayout.parent));
+      return;
+    }
+
+    if (!this.preferences().autoDock) return;
+    if (this.dock) {
+      this.stepDock(cx);
+      return;
+    }
+
+    const currentSpaces = spaces();
+    const currentTerminals = terminals();
+    const currentPanes = panes();
+    const docked = readMap(DOCKED_KEY);
+    const adopted = adoptDockedTabs({
+      spaces: currentSpaces,
+      terminals: currentTerminals,
+      panes: currentPanes,
+      docked,
+    });
+    if (JSON.stringify(adopted) !== JSON.stringify(docked)) writeMap(DOCKED_KEY, adopted);
+    const off = readMap(DOCK_OFF_KEY);
+    const groups = dockGroups({ terminals: currentTerminals, panes: currentPanes, docked: adopted, off });
+
+    // Children that existed before the mod started are not moved.
+    if (!this.dockBase) {
+      this.dockBase = new Set(groups.flatMap((group) => group.children));
+      return;
+    }
+
+    const records = reconcileDocks(
+      { spaces: currentSpaces, terminals: currentTerminals, docked: adopted, off },
+      groups,
+    );
+    if (JSON.stringify(records.docked) !== JSON.stringify(docked)) writeMap(DOCKED_KEY, records.docked);
+    if (JSON.stringify(records.off) !== JSON.stringify(off)) writeMap(DOCK_OFF_KEY, records.off);
+
+    if (Date.now() - this.dockCooldown < 3000) return;
+    for (const group of groups) {
+      const children = group.children.filter((address) => !this.dockBase.has(address));
+      if (!children.length) continue;
+      const tab = records.docked[group.parent] ?? null;
+      if (tab) this.relayoutAgentGroup(group.parent, children);
+      else this.startDock({ ...group, tab: null, children });
+      return;
+    }
+
+    this.equalizeTick();
+  }
+
+  startDock(group) {
+    const tabId = group.tab ? normalizeId(group.tab) : null;
+    if (tabId) {
+      const inTab = panes().filter((pane) => normalizeId(pane.tab) === tabId);
+      const anchor = inTab[inTab.length - 1]?.pane ?? null;
+      if (!anchor) return;
+      this.dock = {
+        mode: "append",
+        parent: group.parent,
+        tab: tabId,
+        anchor,
+        children: group.children,
+        index: 0,
+        waiting: null,
+        waitUntil: 0,
+        fails: 0,
+        startedAt: Date.now(),
+        focus: focused(),
+      };
+      return;
+    }
+
+    const space = spaces().find((candidate) => normalizeId(candidate.id) === normalizeId(group.space));
+    const sequence = nextGroupSequence(space?.tabs ?? [], readMap(DOCK_SEQ_KEY)[group.space]);
+    const seqs = readMap(DOCK_SEQ_KEY);
+    seqs[group.space] = sequence;
+    writeMap(DOCK_SEQ_KEY, seqs);
+    const name = groupName(sequence);
+    const before = new Set((space?.tabs ?? []).map((tab) => normalizeId(tab.id)));
+    this.dock = {
+      mode: "create",
+      parent: group.parent,
+      space: group.space,
+      name,
+      before,
+      tab: null,
+      spacer: null,
+      spacerPane: null,
+      spacerDropped: false,
+      children: group.children,
+      plan: gridPlan(group.children.length, this.preferences().dockColumns),
+      index: 0,
+      slots: {},
+      waiting: null,
+      waitingStep: null,
+      waitUntil: 0,
+      fails: 0,
+      startedAt: Date.now(),
+      focus: focused(),
+    };
+    run("tab.new", { name, space: group.space, focus: false });
+  }
+
+  stepDock(cx) {
+    const dock = this.dock;
+    if (!dock) return;
+    const currentPanes = panes();
+    const paneOf = (terminal) =>
+      currentPanes.find(
+        (pane) =>
+          normalizeId(pane.terminal) === normalizeId(terminal) &&
+          (dock.mode !== "append" || normalizeId(pane.tab) === dock.tab),
+      )?.pane ?? null;
+
+    if (dock.mode === "relayout" && !dock.waiting) {
+      const tabPanes = currentPanes.filter((pane) => normalizeId(pane.tab) === dock.tab);
+      if (dock.phase === "split") {
+        const last = tabPanes[tabPanes.length - 1]?.pane ?? null;
+        if (!last) {
+          this.abortDock(false);
+          return;
+        }
+        dock.beforePanes = new Set(tabPanes.map((pane) => pane.pane));
+        run("pane.split", { direction: "down", pane: last });
+        dock.phase = "spacer";
+        dock.startedAt = Date.now();
+        return;
+      }
+      if (dock.phase === "spacer") {
+        const fresh = tabPanes.find((pane) => !dock.beforePanes.has(pane.pane));
+        if (!fresh) {
+          if (Date.now() - dock.startedAt > 5000) this.abortDock(false);
+          return;
+        }
+        dock.spacerPane = fresh.pane;
+        dock.spacerTerminal = fresh.terminal;
+        dock.phase = "close";
+        dock.startedAt = Date.now();
+        return;
+      }
+      if (dock.phase === "close") {
+        const old = tabPanes.filter((pane) => pane.pane !== dock.spacerPane);
+        if (old.length) {
+          for (const pane of old) if (pane.terminal) run("terminal.park", { terminal: pane.terminal });
+          dock.startedAt = Date.now();
+          return;
+        }
+        dock.phase = "grid";
+        dock.startedAt = Date.now();
+        return;
+      }
+    }
+
+    if (dock.mode === "create" && !dock.tab) {
+      const space = spaces().find((candidate) => normalizeId(candidate.id) === normalizeId(dock.space));
+      const fresh = (space?.tabs ?? []).filter((tab) => !dock.before.has(normalizeId(tab.id)));
+      const found = fresh.find((tab) => tab.name === dock.name) ?? (fresh.length === 1 ? fresh[0] : null);
+      if (!found) {
+        if (Date.now() - dock.startedAt > 5000) this.abortDock(false);
+        return;
+      }
+      dock.tab = normalizeId(found.id);
+      const tabPanes = currentPanes.filter((pane) => normalizeId(pane.tab) === dock.tab);
+      dock.spacerPane = tabPanes[0]?.pane ?? null;
+      dock.spacer = tabPanes[0]?.terminal ?? null;
+      dock.startedAt = Date.now();
+      if (!dock.spacerPane) return;
+    }
+
+    if (dock.waiting) {
+      const pane = paneOf(dock.waiting);
+      if (pane) {
+        if (dock.mode === "append") dock.anchor = pane;
+        else dock.slots[slotKey(dock.waitingStep)] = pane;
+        dock.waiting = null;
+        dock.waitingStep = null;
+        dock.fails = 0;
+      } else if (Date.now() > dock.waitUntil) {
+        dock.fails += 1;
+        if (dock.fails >= 2) {
+          this.abortDock(true);
+          return;
+        }
+        dock.waitUntil = Date.now() + 3000;
+        return;
+      } else {
+        return;
+      }
+    }
+
+    if ((dock.mode === "create" || dock.mode === "relayout") && dock.spacerPane && !dock.spacerDropped) {
+      if (dock.index > 0) {
+        run("pane.close", { pane: dock.spacerPane });
+        dock.spacerDropped = true;
+        return;
+      }
+    }
+
+    if (dock.mode === "append") {
+      if (dock.index >= dock.children.length) {
+        this.finishDock(cx);
+        return;
+      }
+      const terminal = dock.children[dock.index];
+      if (!terminal) {
+        dock.index += 1;
+        return;
+      }
+      const landed = paneOf(terminal);
+      if (landed) {
+        dock.anchor = landed;
+        dock.index += 1;
+        return;
+      }
+      if (focused()?.pane !== dock.anchor) run("pane.focus", { pane: dock.anchor });
+      run("terminal.keep", { terminal, place: "down" });
+      dock.waiting = terminal;
+      dock.waitUntil = Date.now() + 3000;
+      dock.index += 1;
+      return;
+    }
+
+    if (!dock.spacerPane) return;
+    if (dock.index >= dock.plan.length) {
+      this.finishDock(cx);
+      return;
+    }
+
+    const step = dock.plan[dock.index];
+    const anchor = step.anchor ? dock.slots[slotKey(step.anchor)] : dock.spacerPane;
+    if (!anchor) return;
+    const terminal = dock.children[step.child];
+    if (!terminal) {
+      dock.index += 1;
+      return;
+    }
+
+    const landed = paneOf(terminal);
+    if (landed) {
+      dock.slots[slotKey(step)] = landed;
+      dock.index += 1;
+      return;
+    }
+
+    if (focused()?.pane !== anchor) run("pane.focus", { pane: anchor });
+    run("terminal.keep", { terminal, place: step.direction });
+    dock.waiting = terminal;
+    dock.waitingStep = step;
+    dock.waitUntil = Date.now() + 3000;
+    dock.index += 1;
+  }
+
+  finishDock(cx) {
+    const dock = this.dock;
+    if (!dock) return;
+    if (dock.mode === "create") {
+      const docked = readMap(DOCKED_KEY);
+      docked[dock.parent] = dock.tab;
+      writeMap(DOCKED_KEY, docked);
+      if (dock.spacerPane && !dock.spacerDropped) run("pane.close", { pane: dock.spacerPane });
+    }
+    const grids = readMap(GRIDS_KEY);
+    if (dock.mode === "create" || dock.mode === "relayout") {
+      grids[normalizeId(dock.tab)] = {
+        rows: planRows(dock.plan, dock.children),
+        columns: this.preferences().dockColumns,
+        pxCol: 8,
+        pxRow: 17,
+        pending: null,
+      };
+      writeMap(GRIDS_KEY, grids);
+    } else if (grids[normalizeId(dock.tab)]) {
+      delete grids[normalizeId(dock.tab)];
+      writeMap(GRIDS_KEY, grids);
+    }
+    const focus = dock.focus;
+    this.dock = null;
+    this.dockCooldown = Date.now();
+    this.markDocked(dock.children);
+    if (focus?.pane && panes().some((pane) => pane.pane === focus.pane)) run("pane.focus", { pane: focus.pane });
+    cx.notify();
+  }
+
+  abortDock(dismiss) {
+    const dock = this.dock;
+    this.dock = null;
+    if (!dock) return;
+    this.dockCooldown = Date.now();
+    this.markDocked(dock.children);
+    if (dismiss && dock.mode !== "relayout") {
+      const off = readMap(DOCK_OFF_KEY);
+      off[dock.parent] = Date.now();
+      writeMap(DOCK_OFF_KEY, off);
+    }
+    const focus = dock.focus;
+    if (focus?.pane && panes().some((pane) => pane.pane === focus.pane)) run("pane.focus", { pane: focus.pane });
+  }
+
+  markDocked(addresses) {
+    this.dockBase = this.dockBase ?? new Set();
+    for (const address of addresses) this.dockBase.add(address);
+  }
+
   render(_cx) {
     const t = theme();
     if (this.panel === "settings") return this.settings(t);
+    if (this.panel === "actions") return this.actions(t);
     this.prefs = this.preferences();
     const model = buildRequirements({
       spaces: spaces(),
@@ -363,6 +905,27 @@ export default class RequirementsSidebar extends View {
       )
       .child(
         h_flex()
+          .id("multi-repo-dock-columns")
+          .min_h(36)
+          .py(4)
+          .px(6)
+          .gap(8)
+          .rounded(6)
+          .items_center()
+          .child(
+            v_flex()
+              .flex_1()
+              .min_w(0)
+              .gap(1)
+              .child(div().text_size(12).text_color(t.foreground).child("每个 tab 的 pane 列数"))
+              .child(div().text_size(10).text_color(t.dim).child("自动停靠时使用的网格列数")),
+          )
+          .child(this.stepButton("multi-repo-dock-columns-minus", "−", () => this.setDockColumns(prefs.dockColumns - 1)))
+          .child(div().w(18).text_center().text_size(12).text_color(t.foreground).child(String(prefs.dockColumns)))
+          .child(this.stepButton("multi-repo-dock-columns-plus", "+", () => this.setDockColumns(prefs.dockColumns + 1))),
+      )
+      .child(
+        h_flex()
           .id("multi-repo-open-layout-settings")
           .h(30)
           .px(4)
@@ -380,6 +943,133 @@ export default class RequirementsSidebar extends View {
           .child(div().text_size(11).text_color(t.dim).child("›")),
       )
       .child(div().px(4).pt(2).text_size(10).text_color(t.dim).child("设置保存在 shared.json"));
+  }
+
+  setDockColumns(value) {
+    const prefs = this.preferences();
+    setShared(PREFERENCES_KEY, { ...prefs, dockColumns: clampDockColumns(value) });
+  }
+
+  stepButton(id, label, onClick) {
+    const t = theme();
+    return div()
+      .id(id)
+      .size(18)
+      .flex_none()
+      .rounded(4)
+      .border(1)
+      .border_color(t.border)
+      .flex()
+      .items_center()
+      .justify_center()
+      .text_size(11)
+      .text_color(t.dim)
+      .cursor_pointer()
+      .hover((style) => style.bg(t.hover).text_color(t.foreground))
+      .on_click(onClick)
+      .child(label);
+  }
+
+  actions(t) {
+    const address = String(props()?.terminal ?? "");
+    const count = dockableChildren(terminals(), panes(), address).length;
+    const group = dockedGroup({
+      spaces: spaces(),
+      terminals: terminals(),
+      panes: panes(),
+      docked: readMap(DOCKED_KEY),
+      address,
+    });
+    const arrange = group && group.children.length >= 2 ? group : null;
+    return v_flex()
+      .id("multi-repo-actions")
+      .size_full()
+      .p(4)
+      .gap(2)
+      .text_color(t.foreground)
+      .child(
+        h_flex()
+          .h(26)
+          .px(4)
+          .items_center()
+          .justify_between()
+          .child(div().text_size(12).font_medium().child("Agent"))
+          .child(
+            div()
+              .id("multi-repo-actions-close")
+              .size(20)
+              .flex_none()
+              .flex()
+              .items_center()
+              .justify_center()
+              .rounded(4)
+              .text_size(13)
+              .text_color(t.dim)
+              .cursor_pointer()
+              .hover((style) => style.bg(t.hover).text_color(t.foreground))
+              .on_click(() => this.closeSettings())
+              .child("×"),
+          ),
+      )
+      .when(Boolean(arrange), (el) =>
+        el.child(
+          h_flex()
+            .id("multi-repo-relayout")
+            .h(30)
+            .px(4)
+            .gap(6)
+            .rounded(6)
+            .items_center()
+            .cursor_pointer()
+            .hover((style) => style.bg(t.hover))
+            .on_click(() => this.requestRelayout(arrange.parent))
+            .child(Icon("branch", 12).text_color(t.accent))
+            .child(
+              div()
+                .flex_1()
+                .min_w(0)
+                .truncate()
+                .text_size(11.5)
+                .text_color(t.foreground)
+                .child(`重新排列子Agent(${arrange.children.length})`),
+            ),
+        ),
+      )
+      .child(
+        h_flex()
+          .id("multi-repo-dock-children")
+          .h(30)
+          .px(4)
+          .gap(6)
+          .rounded(6)
+          .items_center()
+          .when(count > 0, (el) =>
+            el
+              .cursor_pointer()
+              .hover((style) => style.bg(t.hover))
+              .on_click(() => this.requestDock(address)),
+          )
+          .child(Icon("plus", 12).text_color(count ? t.accent : t.dim))
+          .child(
+            div()
+              .flex_1()
+              .min_w(0)
+              .truncate()
+              .text_size(11.5)
+              .text_color(count ? t.foreground : t.dim)
+              .child(count ? `停靠子 agent（${count}）` : "没有待停靠的子 agent"),
+          ),
+      );
+  }
+
+  requestDock(address) {
+    setShared("multi-repo.dockRequest", { terminal: address, at: Date.now() });
+    this.closeSettings();
+  }
+
+  requestRelayout(parent) {
+    setShared("multi-repo.relayoutRequest", { parent, at: Date.now() });
+    this.closeSettings();
   }
 
   full(t, model) {
@@ -593,8 +1283,9 @@ export default class RequirementsSidebar extends View {
       .when(active, (el) => el.bg(t.selected))
       .hover((style) => style.bg(t.hover))
       .on_click(() => this.focusAgent(node))
+      .on_mouse_down("right", () => this.openAgentMenu(node))
       .tooltip(
-        `${displayName(node)}${node.cwd ? ` · ${node.cwd}` : ""}${node.report ? ` · ${node.report}` : ""}`,
+        `${displayName(node)}${node.cwd ? ` · ${node.cwd}` : ""}${node.report ? ` · ${node.report}` : ""} · 右键停靠子 agent`,
       )
       .children(lines.map((line) => Rail(line)))
       .when(Boolean(icon), (el) => el.child(icon))
