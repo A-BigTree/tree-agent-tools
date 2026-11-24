@@ -22,6 +22,7 @@ Herdr 现有的 `spaces` / `agents` 是两个平铺列表；这个 mod 把同一
 - 仓库名优先取 `git rev-parse --show-toplevel` 的目录名；拿不到时回退到 cwd 目录名。
 - 只展示 `state: "live"` 的终端；已结束的终端不显示。
 - 不显示聚合状态；需求行支持点击折叠/展开。
+- 自动停靠：同一父 agent 的无 pane 子 agent 会在父 agent 所在 space 新建 `子代理 · <父名>` tab，按设置里的列数（默认 2）排成网格；同父的后续子 agent 追加到同一个 tab。mod 启动时已存在的子 agent 不会被移动；手动关闭该 tab 后不再为该父 agent 重建。
 
 ## 安装
 

@@ -21,7 +21,14 @@ import {
   watchFolder,
   window,
 } from "herdr";
-import { baseName, buildRequirements, displayName } from "./lib/model.js";
+import { baseName, buildRequirements, displayName, normalizeId } from "./lib/model.js";
+import {
+  DOCK_OFF_KEY,
+  DOCKED_KEY,
+  dockGroups,
+  gridPlan,
+  reconcileDocks,
+} from "./lib/docking.js";
 import {
   cacheKey,
   dueRequests,
@@ -33,6 +40,7 @@ import {
 import {
   PREFERENCES_KEY,
   PREFERENCE_TOGGLES,
+  clampDockColumns,
   normalizePreferences,
   togglePreference as flipPreference,
 } from "./lib/preferences.js";
@@ -62,6 +70,23 @@ function writeSet(key, value) {
   localStorage.setItem(key, JSON.stringify([...value]));
 }
 
+function readMap(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) ?? "{}");
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeMap(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function slotKey(slot) {
+  return `${slot.row}:${slot.col}`;
+}
+
 export default class RequirementsSidebar extends View {
   init(_props, cx) {
     this.scroll = ScrollHandle.new();
@@ -75,10 +100,14 @@ export default class RequirementsSidebar extends View {
     this.collapsed = readSet("multi-repo.collapsed");
     this.pressed = null;
     this.over = null;
+    this.dock = null;
+    this.dockBase = null;
+    this.dockCooldown = 0;
     this.panel = props()?.panel === "settings" ? "settings" : "sidebar";
     if (!checking() && this.panel === "sidebar") {
       cx.timer.after(500, (cx) => this.refreshBranches(cx));
       cx.timer.every(1500, (cx) => this.refreshBranches(cx));
+      cx.timer.every(1000, (cx) => this.dockTick(cx));
     }
   }
 
@@ -95,7 +124,7 @@ export default class RequirementsSidebar extends View {
       mod: "multi-repo-sidebar",
       kind: "popup",
       width: 252,
-      height: 196,
+      height: 268,
       props: { panel: "settings" },
     });
   }
@@ -298,6 +327,229 @@ export default class RequirementsSidebar extends View {
     });
   }
 
+  dockTick(cx) {
+    if (checking()) return;
+    if (!this.preferences().autoDock) return;
+    if (this.dock) {
+      this.stepDock(cx);
+      return;
+    }
+
+    const currentSpaces = spaces();
+    const currentTerminals = terminals();
+    const currentPanes = panes();
+    const docked = readMap(DOCKED_KEY);
+    const off = readMap(DOCK_OFF_KEY);
+    const groups = dockGroups({ terminals: currentTerminals, panes: currentPanes, docked, off });
+
+    // Children that existed before the mod started are not moved.
+    if (!this.dockBase) {
+      this.dockBase = new Set(groups.flatMap((group) => group.children));
+      return;
+    }
+
+    const records = reconcileDocks(
+      { spaces: currentSpaces, terminals: currentTerminals, docked, off },
+      groups,
+    );
+    if (JSON.stringify(records.docked) !== JSON.stringify(docked)) writeMap(DOCKED_KEY, records.docked);
+    if (JSON.stringify(records.off) !== JSON.stringify(off)) writeMap(DOCK_OFF_KEY, records.off);
+
+    if (Date.now() - this.dockCooldown < 3000) return;
+    for (const group of groups) {
+      const children = group.children.filter((address) => !this.dockBase.has(address));
+      if (!children.length) continue;
+      this.startDock({ ...group, tab: records.docked[group.parent] ?? null, children });
+      return;
+    }
+  }
+
+  startDock(group) {
+    const tabId = group.tab ? normalizeId(group.tab) : null;
+    if (tabId) {
+      const inTab = panes().filter((pane) => normalizeId(pane.tab) === tabId);
+      const anchor = inTab[inTab.length - 1]?.pane ?? null;
+      if (!anchor) return;
+      this.dock = {
+        mode: "append",
+        parent: group.parent,
+        tab: tabId,
+        anchor,
+        children: group.children,
+        index: 0,
+        waiting: null,
+        waitUntil: 0,
+        fails: 0,
+        startedAt: Date.now(),
+        focus: focused(),
+      };
+      return;
+    }
+
+    const space = spaces().find((candidate) => normalizeId(candidate.id) === normalizeId(group.space));
+    const before = new Set((space?.tabs ?? []).map((tab) => normalizeId(tab.id)));
+    this.dock = {
+      mode: "create",
+      parent: group.parent,
+      space: group.space,
+      name: group.name,
+      before,
+      tab: null,
+      spacer: null,
+      spacerPane: null,
+      children: group.children,
+      plan: gridPlan(group.children.length, this.preferences().dockColumns),
+      index: 0,
+      slots: {},
+      waiting: null,
+      waitingStep: null,
+      waitUntil: 0,
+      fails: 0,
+      startedAt: Date.now(),
+      focus: focused(),
+    };
+    run("tab.new", { name: group.name, space: group.space, focus: false });
+  }
+
+  stepDock(cx) {
+    const dock = this.dock;
+    if (!dock) return;
+    const currentPanes = panes();
+    const paneOf = (terminal) =>
+      currentPanes.find(
+        (pane) =>
+          normalizeId(pane.terminal) === normalizeId(terminal) &&
+          (dock.mode !== "append" || normalizeId(pane.tab) === dock.tab),
+      )?.pane ?? null;
+
+    if (dock.mode === "create" && !dock.tab) {
+      const space = spaces().find((candidate) => normalizeId(candidate.id) === normalizeId(dock.space));
+      const fresh = (space?.tabs ?? []).filter((tab) => !dock.before.has(normalizeId(tab.id)));
+      const found = fresh.find((tab) => tab.name === dock.name) ?? (fresh.length === 1 ? fresh[0] : null);
+      if (!found) {
+        if (Date.now() - dock.startedAt > 5000) this.abortDock(false);
+        return;
+      }
+      dock.tab = normalizeId(found.id);
+      const tabPanes = currentPanes.filter((pane) => normalizeId(pane.tab) === dock.tab);
+      dock.spacerPane = tabPanes[0]?.pane ?? null;
+      dock.spacer = tabPanes[0]?.terminal ?? null;
+      dock.startedAt = Date.now();
+      if (!dock.spacerPane) return;
+    }
+
+    if (dock.waiting) {
+      const pane = paneOf(dock.waiting);
+      if (pane) {
+        if (dock.mode === "append") dock.anchor = pane;
+        else dock.slots[slotKey(dock.waitingStep)] = pane;
+        dock.waiting = null;
+        dock.waitingStep = null;
+        dock.fails = 0;
+      } else if (Date.now() > dock.waitUntil) {
+        dock.fails += 1;
+        if (dock.fails >= 2) {
+          this.abortDock(true);
+          return;
+        }
+        dock.waitUntil = Date.now() + 3000;
+        return;
+      } else {
+        return;
+      }
+    }
+
+    if (dock.mode === "append") {
+      if (dock.index >= dock.children.length) {
+        this.finishDock(cx);
+        return;
+      }
+      const terminal = dock.children[dock.index];
+      if (!terminal) {
+        dock.index += 1;
+        return;
+      }
+      const landed = paneOf(terminal);
+      if (landed) {
+        dock.anchor = landed;
+        dock.index += 1;
+        return;
+      }
+      if (focused()?.pane !== dock.anchor) run("pane.focus", { pane: dock.anchor });
+      run("terminal.keep", { terminal, place: "down" });
+      dock.waiting = terminal;
+      dock.waitUntil = Date.now() + 3000;
+      dock.index += 1;
+      return;
+    }
+
+    if (!dock.spacerPane) return;
+    if (dock.index >= dock.plan.length) {
+      this.finishDock(cx);
+      return;
+    }
+
+    const step = dock.plan[dock.index];
+    const anchor = step.anchor ? dock.slots[slotKey(step.anchor)] : dock.spacerPane;
+    if (!anchor) return;
+    const terminal = dock.children[step.child];
+    if (!terminal) {
+      dock.index += 1;
+      return;
+    }
+
+    const landed = paneOf(terminal);
+    if (landed) {
+      dock.slots[slotKey(step)] = landed;
+      dock.index += 1;
+      return;
+    }
+
+    if (focused()?.pane !== anchor) run("pane.focus", { pane: anchor });
+    run("terminal.keep", { terminal, place: step.direction });
+    dock.waiting = terminal;
+    dock.waitingStep = step;
+    dock.waitUntil = Date.now() + 3000;
+    dock.index += 1;
+  }
+
+  finishDock(cx) {
+    const dock = this.dock;
+    if (!dock) return;
+    if (dock.mode === "create") {
+      const docked = readMap(DOCKED_KEY);
+      docked[dock.parent] = dock.tab;
+      writeMap(DOCKED_KEY, docked);
+      if (dock.spacerPane) run("pane.close", { pane: dock.spacerPane });
+    }
+    const focus = dock.focus;
+    this.dock = null;
+    this.dockCooldown = Date.now();
+    this.markDocked(dock.children);
+    if (focus?.pane && panes().some((pane) => pane.pane === focus.pane)) run("pane.focus", { pane: focus.pane });
+    cx.notify();
+  }
+
+  abortDock(dismiss) {
+    const dock = this.dock;
+    this.dock = null;
+    if (!dock) return;
+    this.dockCooldown = Date.now();
+    this.markDocked(dock.children);
+    if (dismiss) {
+      const off = readMap(DOCK_OFF_KEY);
+      off[dock.parent] = Date.now();
+      writeMap(DOCK_OFF_KEY, off);
+    }
+    const focus = dock.focus;
+    if (focus?.pane && panes().some((pane) => pane.pane === focus.pane)) run("pane.focus", { pane: focus.pane });
+  }
+
+  markDocked(addresses) {
+    this.dockBase = this.dockBase ?? new Set();
+    for (const address of addresses) this.dockBase.add(address);
+  }
+
   render(_cx) {
     const t = theme();
     if (this.panel === "settings") return this.settings(t);
@@ -363,6 +615,26 @@ export default class RequirementsSidebar extends View {
       )
       .child(
         h_flex()
+          .id("multi-repo-dock-columns")
+          .h(36)
+          .px(6)
+          .gap(8)
+          .rounded(6)
+          .items_center()
+          .child(
+            v_flex()
+              .flex_1()
+              .min_w(0)
+              .gap(1)
+              .child(div().text_size(12).text_color(t.foreground).child("每个 tab 的 pane 列数"))
+              .child(div().text_size(10).text_color(t.dim).child("自动停靠时使用的网格列数")),
+          )
+          .child(this.stepButton("multi-repo-dock-columns-minus", "−", () => this.setDockColumns(prefs.dockColumns - 1)))
+          .child(div().w(18).text_center().text_size(12).text_color(t.foreground).child(String(prefs.dockColumns)))
+          .child(this.stepButton("multi-repo-dock-columns-plus", "+", () => this.setDockColumns(prefs.dockColumns + 1))),
+      )
+      .child(
+        h_flex()
           .id("multi-repo-open-layout-settings")
           .h(30)
           .px(4)
@@ -380,6 +652,31 @@ export default class RequirementsSidebar extends View {
           .child(div().text_size(11).text_color(t.dim).child("›")),
       )
       .child(div().px(4).pt(2).text_size(10).text_color(t.dim).child("设置保存在 shared.json"));
+  }
+
+  setDockColumns(value) {
+    const prefs = this.preferences();
+    setShared(PREFERENCES_KEY, { ...prefs, dockColumns: clampDockColumns(value) });
+  }
+
+  stepButton(id, label, onClick) {
+    const t = theme();
+    return div()
+      .id(id)
+      .size(18)
+      .flex_none()
+      .rounded(4)
+      .border(1)
+      .border_color(t.border)
+      .flex()
+      .items_center()
+      .justify_center()
+      .text_size(11)
+      .text_color(t.dim)
+      .cursor_pointer()
+      .hover((style) => style.bg(t.hover).text_color(t.foreground))
+      .on_click(onClick)
+      .child(label);
   }
 
   full(t, model) {

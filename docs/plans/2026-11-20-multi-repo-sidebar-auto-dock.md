@@ -8,6 +8,8 @@
 
 **Tech Stack:** Herdr mod（JavaScript、gpui-kit）、Node `node:test`。
 
+> **执行修正：** mod 里的 `run()` 返回 `null`，不能读取 `tab.new` / `terminal.keep` 的返回值。实现改为：建 tab 前快照 space 的 tab id，下一 tick 用 diff + 名称定位新 tab；keep 后只轮询 `panes()`。另外第一个 tick 记录已存在的无 pane 子 agent 作为基线，不移动它们；复用已有 tab 时在最后一个 pane 上向下追加。以下 Task 3 的代码以仓库当前实现为准。
+
 ---
 
 ## Task 1: 偏好新增 autoDock 与 dockColumns

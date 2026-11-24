@@ -55,15 +55,22 @@
 
 `init` 注册 `cx.timer.every(1000, ...)`。每个 tick 读取一次实时数据，只推进一步，避免 `terminal.keep` 的 `pending` 竞态。
 
+**实现修正：** mod 里的 `run()` 返回 `null`，拿不到 `tab.new` 的返回值。因此建 tab 前先快照目标 space 的 tab id，下一 tick 用 diff + 名称找到新 tab；`terminal.keep` 的效果也只看 `panes()`。
+
+**只处理新子 agent：** mod 启动后的第一个 tick 记录当前所有无 pane 子 agent 作为基线，不移动已存在的子 agent；之后只停靠基线之外的新子 agent。
+
 一组子 agent 的步骤：
 
-1. `tab.new { name: "子代理 · <父名>", space, focus: false }`，记下返回的 `tab` 和初始 shell `terminal`。
-2. 按 `gridPlan` 顺序逐个停靠：`pane.focus` 目标 pane → `terminal.keep { terminal, place }`。
-3. 下一 tick 用 `panes()` 确认子 agent 已落位；3 秒未落位则重试该步。
-4. 全部落位后关闭初始 shell pane（spacer）。
-5. 恢复 `focused()` 记录的 pane/terminal。
+1. 快照目标 space 的 tab id，`tab.new { name: "子代理 · <父名>", space, focus: false }`。
+2. 下一 tick 用 diff 找到新 tab，取它的初始 shell pane 作为 spacer。
+3. 按 `gridPlan` 顺序逐个停靠：`pane.focus` 目标 pane → `terminal.keep { terminal, place }`。
+4. 下一 tick 用 `panes()` 确认子 agent 已落位；3 秒未落位则重试该步。
+5. 全部落位后关闭 spacer。
+6. 恢复 `focused()` 记录的 pane/terminal。
 
-单步连续失败 2 次即放弃该组并记入 `dockOff`，避免每秒重试刷屏。
+同一父 agent 后续再创建子 agent 时复用已记录的 tab：每个新子 agent 在 tab 最后一个 pane 上向下切分。
+
+单步连续失败 2 次即放弃该组并记入 `dockOff`，避免每秒重试刷屏。任何 aborted 组都会把子 agent 加入基线，配合 `dockCooldown` 防止重复建 tab。
 
 ## 网格规划
 
