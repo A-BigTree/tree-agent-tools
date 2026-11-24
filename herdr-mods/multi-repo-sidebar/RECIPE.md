@@ -45,7 +45,7 @@ Clicks and keys:
 - Requirement row drag: mouse down stores the space id, mouse move marks the row under the pointer when it is on the same machine, mouse up runs `run("space.move", { id: from, index: target + 1 })`; a 2px `accent` line marks the drop edge and the dragged row dims to 0.5 opacity.
 - Requirement row, inactive: `run("space.select", { id })`.
 - Requirement row, active: toggles collapse. Collapsed IDs persist in `localStorage` under `multi-repo.collapsed`.
-- Header gear button: `openOverlay` with this same mod, `kind: "popup"`, `width: 252`, `height: 268`, `props: { panel: "settings" }`. The copy renders three checkbox rows and a column stepper instead of the sidebar; a click toggles `shared("multi-repo.preferences")` through `setShared`, and `×` or Esc closes it.
+- Header gear button: `openOverlay` with this same mod, `kind: "popup"`, `width: 280`, `height: 320`, `props: { panel: "settings" }`. The copy renders three checkbox rows and a column stepper instead of the sidebar; a click toggles `shared("multi-repo.preferences")` through `setShared`, and `×` or Esc closes it.
 - Requirement row, right click: `openOverlay` with the `menu` mod, `props: { tab: "space", target: { id } }`.
 - Workspace repository line: `run("space.select", { id })`.
 - Repository label: focuses its first agent.

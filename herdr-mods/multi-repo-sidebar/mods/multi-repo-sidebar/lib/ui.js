@@ -123,7 +123,8 @@ export function ToggleRow({ id, label, description, value, onClick }) {
   const t = theme();
   return h_flex()
     .id(id)
-    .h(36)
+    .min_h(36)
+    .py(4)
     .px(6)
     .gap(8)
     .rounded(6)

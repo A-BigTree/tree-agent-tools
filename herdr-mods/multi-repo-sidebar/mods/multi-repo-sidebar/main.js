@@ -123,8 +123,8 @@ export default class RequirementsSidebar extends View {
     openOverlay({
       mod: "multi-repo-sidebar",
       kind: "popup",
-      width: 252,
-      height: 268,
+      width: 280,
+      height: 320,
       props: { panel: "settings" },
     });
   }
@@ -616,7 +616,8 @@ export default class RequirementsSidebar extends View {
       .child(
         h_flex()
           .id("multi-repo-dock-columns")
-          .h(36)
+          .min_h(36)
+          .py(4)
           .px(6)
           .gap(8)
           .rounded(6)

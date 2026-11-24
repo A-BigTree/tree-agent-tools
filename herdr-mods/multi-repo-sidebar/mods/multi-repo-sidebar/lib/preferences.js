@@ -12,7 +12,7 @@ export const PREFERENCE_DEFAULTS = {
 export const PREFERENCE_TOGGLES = [
   { key: "showBranch", label: "仓库分支名", description: "在仓库行下方显示分支名" },
   { key: "showStatus", label: "Git 状态", description: "在仓库名后显示改动、同步状态" },
-  { key: "autoDock", label: "自动停靠子 agent", description: "为同一父 agent 的子 agent 新建 tab 并排成网格" },
+  { key: "autoDock", label: "自动停靠子 agent", description: "同父 agent 的子 agent 自动排成网格" },
 ];
 
 export function clampDockColumns(value) {
