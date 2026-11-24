@@ -53,6 +53,8 @@ Clicks and keys:
 - Terminal with no pane (a child sub-agent): `run("terminal.peek", { terminal })`, which opens the peek window.
 - Narrow rail avatar: selects the space. `»`: restores `sidebar.width` from `shared()` or calls `run("layout.resize", { id: "sidebar", px: 76/44 })`.
 
+Right-click an agent row opens this mod's small popup (`props: { panel: "actions", terminal }`). Its item dock count comes from `dockableChildren(terminals(), panes(), address)`; clicking it writes `shared("multi-repo.dockRequest")` and closes the popup. The sidebar instance picks the request up on its next tick, clears it, drops any `dockOff` entry for that parent, and runs the same `startDock` state machine (create or append).
+
 Auto docking runs on a 1000ms tick while `autoDock` is on:
 
 - The first tick records every live child terminal without a pane as a baseline and moves nothing.

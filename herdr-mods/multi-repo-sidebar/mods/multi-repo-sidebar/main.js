@@ -27,10 +27,12 @@ import {
   DOCK_SEQ_KEY,
   DOCKED_KEY,
   dockGroups,
+  dockableChildren,
   gridPlan,
   groupName,
   nextGroupSequence,
   reconcileDocks,
+  spaceFromChain,
 } from "./lib/docking.js";
 import {
   cacheKey,
@@ -106,7 +108,8 @@ export default class RequirementsSidebar extends View {
     this.dock = null;
     this.dockBase = null;
     this.dockCooldown = 0;
-    this.panel = props()?.panel === "settings" ? "settings" : "sidebar";
+    const panel = props()?.panel;
+    this.panel = panel === "settings" || panel === "actions" ? panel : "sidebar";
     if (!checking() && this.panel === "sidebar") {
       cx.timer.after(500, (cx) => this.refreshBranches(cx));
       cx.timer.every(1500, (cx) => this.refreshBranches(cx));
@@ -330,8 +333,49 @@ export default class RequirementsSidebar extends View {
     });
   }
 
+  dockAgentChildren(address) {
+    const currentTerminals = terminals();
+    const byId = new Map(currentTerminals.map((terminal) => [normalizeId(terminal.address), terminal]));
+    const parent = byId.get(normalizeId(address));
+    if (!parent) return;
+    const space = spaceFromChain(parent, byId);
+    if (!space) return;
+    const children = dockableChildren(currentTerminals, panes(), parent.address);
+    if (!children.length) return;
+
+    const key = normalizeId(parent.address);
+    const off = readMap(DOCK_OFF_KEY);
+    if (off[key]) {
+      delete off[key];
+      writeMap(DOCK_OFF_KEY, off);
+    }
+    this.dockBase = this.dockBase ?? new Set();
+    for (const child of children) this.dockBase.delete(child);
+
+    const docked = readMap(DOCKED_KEY);
+    this.startDock({ parent: key, space, tab: docked[key] ?? null, children });
+  }
+
+  openAgentMenu(node) {
+    openOverlay({
+      mod: "multi-repo-sidebar",
+      kind: "popup",
+      width: 240,
+      height: 84,
+      props: { panel: "actions", terminal: node.address },
+    });
+  }
+
   dockTick(cx) {
     if (checking()) return;
+
+    const request = shared("multi-repo.dockRequest");
+    if (request?.terminal && Date.now() - Number(request.at) < 15000) {
+      setShared("multi-repo.dockRequest", null);
+      if (!this.dock) this.dockAgentChildren(String(request.terminal));
+      return;
+    }
+
     if (!this.preferences().autoDock) return;
     if (this.dock) {
       this.stepDock(cx);
@@ -570,6 +614,7 @@ export default class RequirementsSidebar extends View {
   render(_cx) {
     const t = theme();
     if (this.panel === "settings") return this.settings(t);
+    if (this.panel === "actions") return this.actions(t);
     this.prefs = this.preferences();
     const model = buildRequirements({
       spaces: spaces(),
@@ -695,6 +740,71 @@ export default class RequirementsSidebar extends View {
       .hover((style) => style.bg(t.hover).text_color(t.foreground))
       .on_click(onClick)
       .child(label);
+  }
+
+  actions(t) {
+    const address = String(props()?.terminal ?? "");
+    const count = dockableChildren(terminals(), panes(), address).length;
+    return v_flex()
+      .id("multi-repo-actions")
+      .size_full()
+      .p(4)
+      .gap(2)
+      .text_color(t.foreground)
+      .child(
+        h_flex()
+          .h(26)
+          .px(4)
+          .items_center()
+          .justify_between()
+          .child(div().text_size(12).font_medium().child("Agent"))
+          .child(
+            div()
+              .id("multi-repo-actions-close")
+              .size(20)
+              .flex_none()
+              .flex()
+              .items_center()
+              .justify_center()
+              .rounded(4)
+              .text_size(13)
+              .text_color(t.dim)
+              .cursor_pointer()
+              .hover((style) => style.bg(t.hover).text_color(t.foreground))
+              .on_click(() => this.closeSettings())
+              .child("×"),
+          ),
+      )
+      .child(
+        h_flex()
+          .id("multi-repo-dock-children")
+          .h(30)
+          .px(4)
+          .gap(6)
+          .rounded(6)
+          .items_center()
+          .when(count > 0, (el) =>
+            el
+              .cursor_pointer()
+              .hover((style) => style.bg(t.hover))
+              .on_click(() => this.requestDock(address)),
+          )
+          .child(Icon("plus", 12).text_color(count ? t.accent : t.dim))
+          .child(
+            div()
+              .flex_1()
+              .min_w(0)
+              .truncate()
+              .text_size(11.5)
+              .text_color(count ? t.foreground : t.dim)
+              .child(count ? `停靠子 agent（${count}）` : "没有待停靠的子 agent"),
+          ),
+      );
+  }
+
+  requestDock(address) {
+    setShared("multi-repo.dockRequest", { terminal: address, at: Date.now() });
+    this.closeSettings();
   }
 
   full(t, model) {
@@ -908,8 +1018,9 @@ export default class RequirementsSidebar extends View {
       .when(active, (el) => el.bg(t.selected))
       .hover((style) => style.bg(t.hover))
       .on_click(() => this.focusAgent(node))
+      .on_mouse_down("right", () => this.openAgentMenu(node))
       .tooltip(
-        `${displayName(node)}${node.cwd ? ` · ${node.cwd}` : ""}${node.report ? ` · ${node.report}` : ""}`,
+        `${displayName(node)}${node.cwd ? ` · ${node.cwd}` : ""}${node.report ? ` · ${node.report}` : ""} · 右键停靠子 agent`,
       )
       .children(lines.map((line) => Rail(line)))
       .when(Boolean(icon), (el) => el.child(icon))

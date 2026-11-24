@@ -18,6 +18,23 @@ export function nextGroupSequence(tabs = [], stored = 0) {
   return max + 1;
 }
 
+export function dockableChildren(terminals = [], panes = [], parent = "") {
+  const key = normalizeId(parent);
+  const paneTerminals = new Set(
+    panes.filter((pane) => pane && pane.terminal).map((pane) => normalizeId(pane.terminal)),
+  );
+  return terminals
+    .filter(
+      (terminal) =>
+        terminal &&
+        terminal.state === "live" &&
+        terminal.parent &&
+        normalizeId(terminal.parent) === key &&
+        !paneTerminals.has(normalizeId(terminal.address)),
+    )
+    .map((terminal) => String(terminal.address));
+}
+
 export function spaceFromChain(terminal, byId) {
   let cursor = terminal;
   const seen = new Set();

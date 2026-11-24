@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   DOCK_OFF_TTL,
   dockGroups,
+  dockableChildren,
   gridPlan,
   groupName,
   nextGroupSequence,
@@ -58,6 +59,19 @@ test("a parent with a pane in another tab still groups its new children", () => 
   });
   assert.deepEqual(groups[0].children, ["t2"]);
   assert.equal(groups[0].parent, "t1");
+});
+
+test("dockable children are live, direct, and pane-less", () => {
+  const terminals = [
+    terminal("t1", null, { labels: { "herdr.space": "sp1" } }),
+    terminal("t2", "t1"),
+    terminal("t3", "t1", { state: "finished" }),
+    terminal("t4", "t2"),
+    terminal("t5", "t1"),
+  ];
+  assert.deepEqual(dockableChildren(terminals, [{ pane: "p1", terminal: "t5" }], "t1"), ["t2"]);
+  assert.deepEqual(dockableChildren(terminals, [], "t2"), ["t4"]);
+  assert.deepEqual(dockableChildren(terminals, [], "t9"), []);
 });
 
 test("group names are a plain sequence per space", () => {
