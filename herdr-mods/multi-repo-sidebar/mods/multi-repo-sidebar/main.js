@@ -1031,7 +1031,7 @@ export default class RequirementsSidebar extends View {
                 .truncate()
                 .text_size(11.5)
                 .text_color(t.foreground)
-                .child(`按 ${this.preferences().dockColumns} 列重新排列（${arrange.children.length}）`),
+                .child(`重新排列子Agent(${arrange.children.length})`),
             ),
         ),
       )
